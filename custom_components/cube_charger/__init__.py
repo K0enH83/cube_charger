@@ -20,11 +20,10 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Cube Charger from a config entry."""
-    # ⚠️ Voor nu placeholders — later vervangen we deze door echte entry.data/entry.options
-    base_url = "https://portal.cubecharging.com"
-    bearer_token = "REPLACE_ME"  # later uit config_flow/options
-    verify_ssl = True
-    poll_interval = 30  # seconden
+    base_url = entry.data.get("base_url", "https://portal.cubecharging.com")
+    bearer_token = entry.data.get("bearer_token", "")
+    verify_ssl = bool(entry.data.get("verify_ssl", True))
+    poll_interval = int(entry.data.get("poll_interval", 30))
 
     api = CubeApi(base_url, bearer_token, verify_ssl)
     coordinator = CubeCoordinator(hass, api, poll_interval=poll_interval)
