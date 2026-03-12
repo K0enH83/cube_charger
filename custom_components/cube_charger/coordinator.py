@@ -1,43 +1,18 @@
-from __future__ import annotations
 
+from __future__ import annotations
 import logging
 from datetime import timedelta
-from typing import Any
-
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-
 from .api import CubeApi
-
-DOMAIN = "cube_charger"
 
 _LOGGER = logging.getLogger(__name__)
 
-
-class CubeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Coordinator for Cube Charger."""
-
-    def __init__(self, hass: HomeAssistant, api: CubeApi, poll_interval: int = 30) -> None:
-        super().__init__(
-            hass,
-            logger=_LOGGER,                        # ← gebruik standaard Python logger
-            name=f"{DOMAIN}_coordinator",
-            update_interval=timedelta(seconds=poll_interval),
-        )
+class CubeCoordinator(DataUpdateCoordinator):
+    def __init__(self, hass: HomeAssistant, api: CubeApi, poll: int):
+        super().__init__(hass, _LOGGER, name="Cube Charger", update_interval=timedelta(seconds=poll))
         self.api = api
 
-    async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data. Do not hardcode cars here.
-        Expected shape for totals when implemented: {"RFID_XXX": 123.4, ...}
-        """
-        try:
-            pong = await self.api.ping()
-
-            # TODO: vervang None door jouw echte totals per idTag wanneer je API ready is
-            totals_kwh: dict[str, float] | None = None
-            # Voorbeeld (verwijderen zodra API is aangesloten):
-            # totals_kwh = {"RFID_VW": 123.4, "RFID_PEU": 98.7}
-
-            return {"pong": pong, "totals_kwh": totals_kwh}
-        except Exception as err:  # noqa: BLE001
-            raise UpdateFailed(f"Cube Charger update failed: {err}") from err
+    async def _async_update_data(self):
+        boxes = await self.api.list_chargeboxes()
+        return {b["chargeBoxId"]: b for b in boxes}

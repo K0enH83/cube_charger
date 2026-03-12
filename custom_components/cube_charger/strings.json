@@ -1,0 +1,11 @@
+{
+  "title": "Cube Charger",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configureer Cube Charger",
+        "description": "Voer portal-URL, Bearer token en idTag→auto mapping in."
+      }
+    }
+  }
+}

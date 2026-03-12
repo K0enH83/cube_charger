@@ -53,8 +53,10 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 2. Fill in:
    - **Base URL** – e.g. `https://portal.cubecharging.com`
    - **Bearer token**
-   - **Verify SSL**
+   - **connector_id** - 1 is the default
+   - **idtag_mapping** - e.g the mapping of the charge cards used (for example RFID_1=Car1; RFID_2=Car2)
    - **Poll interval** (seconds; default 30)
+   - **Verify SSL**
 3. Submit. The integration will connect and create entities right away.
 
 ---

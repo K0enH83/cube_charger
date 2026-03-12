@@ -1,1 +1,102 @@
-# Define services here once implemented.
+
+start_session:
+  name: Start charging session
+  description: Start a charging session on a charger with an optional idTag and connector override.
+  fields:
+    chargebox_id:
+      name: ChargeBox ID
+      description: ChargeBoxId (optional; if omitted and only one box is present, it will be auto-detected)
+      example: NL-1IC-XXXXXXX
+      required: false
+      selector:
+        text:
+    connector_id:
+      name: Connector ID
+      description: Specific connector on the chargebox. Defaults to the configured connector if omitted.
+      example: 1
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 10
+          mode: box
+          step: 1
+    idtag:
+      name: idTag (RFID)
+      description: idTag / RFID to authorize the session. If omitted, the current option from select.cube_idtag will be used.
+      example: 04C99E820F1E90
+      required: false
+      selector:
+        text:
+
+stop_session:
+  name: Stop charging session
+  description: Stop the active charging session. Provide either transaction_id or connector_id, plus chargeBoxId (auto-detected if single box).
+  fields:
+    chargebox_id:
+      name: ChargeBox ID
+      description: ChargeBoxId (optional; if omitted and only one box is present, it will be auto-detected)
+      example: NL-1IC-XXXXXXX
+      required: false
+      selector:
+        text:
+    transaction_id:
+      name: Transaction ID (numeric)
+      description: OCPP transaction ID. If omitted, the integration will try the active transactionPk; if none, it falls back to connector_id.
+      required: false
+      example: 1596633818
+      selector:
+        number:
+          min: 1
+          mode: box
+    connector_id:
+      name: Connector ID
+      description: Connector to stop. Required if transaction_id not provided.
+      required: false
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 10
+          mode: box
+          step: 1
+
+sync_history:
+  name: Sync history
+  description: Fetch historical finished sessions (paged) and accumulate energy per auto. Optionally bound by a date window.
+  fields:
+    startDate:
+      name: Start date (ISO-8601)
+      required: false
+      selector:
+        text:
+    endDate:
+      name: End date (ISO-8601)
+      required: false
+      selector:
+        text:
+    start_date:
+      name: Start date (snake_case)
+      required: false
+      selector:
+        text:
+    end_date:
+      name: End date (snake_case)
+      required: false
+      selector:
+        text:
+
+rebuild_history:
+  name: Rebuild history (reset + full recompute)
+  description: Reset totals and processed transactions, then recompute within the required date window (paged).
+  fields:
+    startDate:
+      name: Start date (ISO-8601)
+      required: true
+      selector:
+        text:
+    endDate:
+      name: End date (ISO-8601)
+      required: true
+      selector:
+        text:
