@@ -1,13 +1,14 @@
 {
   "domain": "cube_charger",
   "name": "Cube Charger",
-
-  "codeowners": ["@koenhanssen"],
+  "codeowners": [
+    "@koenhanssen"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/K0enH83/cube_charger",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/K0enH83/cube_charger/issues",
   "requirements": [],
-  "version": "0.3.8"
+  "version": "0.3.9"
 }

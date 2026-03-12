@@ -4,12 +4,13 @@
     "step": {
       "user": {
         "title": "Configure Cube Charger",
-        "description": "Enter portal URL, Bearer token and idTag→car mapping.",
+        "description": "Enter portal URL, Bearer token and idTag\u2192car mapping. Example: RFID_VW:VW, RFID_PEU:Peugeot",
         "data": {
           "base_url": "Base URL",
           "bearer_token": "Bearer token",
           "verify_ssl": "Verify SSL",
-          "poll_interval": "Poll interval (seconds)"
+          "poll_interval": "Poll interval (seconds)",
+          "idtag_mapping": "idTag\u2192car mapping (comma-separated)"
         }
       }
     },
