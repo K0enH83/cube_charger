@@ -1,0 +1,34 @@
+{
+  "title": "Cube Charger",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure Cube Charger",
+        "description": "Enter portal URL, Bearer token and idTag→car mapping.",
+        "data": {
+          "base_url": "Base URL",
+          "bearer_token": "Bearer token",
+          "verify_ssl": "Verify SSL",
+          "poll_interval": "Poll interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "cube_charger_status": {
+        "name": "Status"
+      }
+    },
+    "select": {
+      "cube_charger_idtag_select": {
+        "name": "idTag"
+      }
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "title": "Cube Charger",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configureer Cube Charger",
+        "description": "Voer portal-URL, Bearer token en idTag→auto mapping in.",
+        "data": {
+          "base_url": "Basis-URL",
+          "bearer_token": "Bearer token",
+          "verify_ssl": "SSL controleren",
+          "poll_interval": "Poll-interval (seconden)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbinding maken mislukt",
+      "invalid_auth": "Ongeldige authenticatie",
+      "unknown": "Onverwachte fout"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "cube_charger_status": {
+        "name": "Status"
+      }
+    },
+    "select": {
+      "cube_charger_idtag_select": {
+        "name": "idTag"
+      }
+    }
+  }
+}
