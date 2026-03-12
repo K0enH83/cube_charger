@@ -9,5 +9,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/K0enH83/cube_charger/issues",
   "requirements": [],
-  "version": "0.3.7"
+  "version": "0.3.8"
 }
