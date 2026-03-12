@@ -11,7 +11,6 @@ from .api import CubeApi
 
 DOMAIN = "cube_charger"
 
-# Gebruik standaard Python logging
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -21,7 +20,7 @@ class CubeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def __init__(self, hass: HomeAssistant, api: CubeApi, poll_interval: int = 30) -> None:
         super().__init__(
             hass,
-            logger=_LOGGER,  # <-- geef hier de gewone logger door
+            logger=_LOGGER,                        # ← gebruik standaard Python logger
             name=f"{DOMAIN}_coordinator",
             update_interval=timedelta(seconds=poll_interval),
         )
