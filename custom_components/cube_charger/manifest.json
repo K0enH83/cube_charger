@@ -4,10 +4,10 @@
 
   "codeowners": ["@koenhanssen"],
   "config_flow": true,
-  "documentation": "https://github.com/<org-or-user>/cube_charger",
+  "documentation": "https://github.com/K0enH83/cube_charger",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/<org-or-user>/cube_charger/issues",
+  "issue_tracker": "https://github.com/K0enH83/cube_charger/issues",
   "requirements": [],
   "version": "0.3.6"
 }
