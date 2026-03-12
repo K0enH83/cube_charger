@@ -61,3 +61,19 @@ class CubeStatusSensor(SensorEntity):
     @property
     def available(self) -> bool:
         # Coordinator heeft data als laatste update gelukt is; zeer minimale check
+        return self._coordinator.last_update_success
+
+    @property
+    def native_value(self) -> Any:
+        """Retourneer een eenvoudige waarde uit de coordinator-data."""
+        data = self._coordinator.data or {}
+        # In coordinator._async_update_data() gaven we {"pong": {"ok": True}}
+        pong = data.get("pong", {})
+        ok = pong.get("ok")
+        # Toon bijvoorbeeld 'online' of 'unknown'
+        return "online" if ok is True else "unknown"
+
+    async def async_update(self) -> None:
+        """HA kan dit aanroepen, maar coordinator regelt updates.
+        We vragen hier netjes om een refresh."""
+        await self._coordinator.async_request_refresh()
