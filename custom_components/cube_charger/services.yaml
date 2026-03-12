@@ -24,7 +24,7 @@ start_session:
     idtag:
       name: idTag (RFID)
       description: idTag / RFID to authorize the session. If omitted, the current option from select.cube_idtag will be used.
-      example: 04C99E820F1E90
+      example: 9EXXXXXXX
       required: false
       selector:
         text:
