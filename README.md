@@ -12,7 +12,7 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 - **Status sensor**: `sensor.cube_charger_status` shows `online` / `unknown` (backend connectivity).
 - **idTag select**: `select.cube_charger_idtag` 
 - **Automatic polling** via a `DataUpdateCoordinator`.
-- Services: `start_session`, `stop_session`, `sync_history`, `rebuild_history`
+- Services: `start_session`, `stop_session`, `sync_history`, `rebuild_history`, `reset_chargebox`
 - Options flow for idTags (manage via UI)
 - kWh history aggregation per car (idTag)
 
@@ -103,6 +103,12 @@ The following services are available and can be called via **Developer Tools →
   **Fields:**  
   - `startDate` (required): Start date in ISO-8601 format (e.g., 2023-10-01T00:00:00Z).  
   - `endDate` (required): End date in ISO-8601 format (e.g., 2023-10-31T23:59:59Z).
+
+- **`cube_charger.reset_chargebox`**  
+  Resets the chargebox with either a Hard or Soft reset.  
+  **Fields:**  
+  - `chargebox_id` (optional): ChargeBox ID (auto-detected if only one box).  
+  - `reset_type` (required): "Hard" for full reset or "Soft" for graceful reset.
 
 ---
 

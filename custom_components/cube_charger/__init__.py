@@ -117,6 +117,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await _update_history_aggregates_window(hass, entry.entry_id, start_iso, end_iso, append=True)
     hass.services.async_register(DOMAIN, "rebuild_history", svc_rebuild_history)
 
+    async def svc_reset_chargebox(call):
+        chargebox_id = call.data.get("chargebox_id")
+        reset_type = call.data["reset_type"]  # Required
+        if not chargebox_id:
+            data = hass.data[DOMAIN][entry.entry_id]
+            cids = list((data["coord"].data or {}).keys())
+            chargebox_id = cids[0] if cids else None
+        if not chargebox_id:
+            raise ValueError("chargebox_id is required or must be auto-detectable")
+        await api.reset_chargebox(chargebox_id, reset_type)
+
+    hass.services.async_register(DOMAIN, "reset_chargebox", svc_reset_chargebox)
+
     async def _aggregate_history(now):
         await _update_history_aggregates(hass, entry.entry_id)
 

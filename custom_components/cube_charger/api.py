@@ -70,3 +70,14 @@ class CubeApi:
                 r.raise_for_status()
                 data = await r.json()
                 return data if isinstance(data, list) else []
+
+    async def reset_chargebox(self, chargebox_id: str, reset_type: str) -> dict[str, Any]:
+        """Reset a charge box. reset_type should be 'Hard' or 'Soft'."""
+        if reset_type not in ["Hard", "Soft"]:
+            raise ValueError("reset_type must be 'Hard' or 'Soft'")
+        url = f"{self.base_url}/api/v1/CubeCharging/chargebox/reset"
+        payload = {"chargeBoxId": chargebox_id, "resetType": reset_type}
+        async with aiohttp.ClientSession() as s:
+            async with s.post(url, json=payload, headers=self._headers(), ssl=self.verify_ssl, timeout=20) as r:
+                r.raise_for_status()
+                return await r.json()

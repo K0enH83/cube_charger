@@ -100,3 +100,27 @@ rebuild_history:
       required: true
       selector:
         text:
+
+reset_chargebox:
+  name: Reset chargebox
+  description: Reset the chargebox with either a Hard or Soft reset.
+  fields:
+    chargebox_id:
+      name: ChargeBox ID
+      description: The charge box ID (optional; if omitted and only one box is present, it will be auto-detected)
+      example: NL-1IC-XXXXXXX
+      required: false
+      selector:
+        text:
+    reset_type:
+      name: Reset type
+      description: Type of reset - Hard for full reset or Soft for graceful reset
+      example: Hard
+      required: true
+      selector:
+        select:
+          options:
+            - label: Hard (full reset)
+              value: Hard
+            - label: Soft (graceful reset)
+              value: Soft
