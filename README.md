@@ -68,9 +68,9 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 |-------------------------------|--------|--------------------------------------------------------------|
 | `sensor.cube_charger_status`  | Sensor | `online` or `unknown` based on API connectivity              |
 | `select.cube_charger_idtag`   | Select | Choose the active **idTag / car** (placeholder options now) |
-| `sensor.cube_mappedtag_active_sessie`  | Sensor | Intended to show the current transaction energy consumption             |
-| `sensor.cube_mappedtag_energie_totaal`  | Sensor | Sensor to accumulate total energy consumption on specified tag/car/person             |
-| `sensor.cube_mappedtag_laadt_nu`  | Sensor | Sensor to indicate if tag is currently charging              |
+| `sensor.cube_<mappedtag>_active_sessie`  | Sensor | Intended to show the current transaction energy consumption             |
+| `sensor.cube_<mappedtag>_energie_totaal`  | Sensor | Sensor to accumulate total energy consumption on specified tag/car/person             |
+| `sensor.cube_<mappedtag>_laadt_nu`  | Sensor | Sensor to indicate if tag is currently charging              |
 
 ---
 
