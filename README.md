@@ -53,7 +53,7 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 1. Go to **Settings → Devices & Services → Add Integration** → search for **Cube Charger**
 2. Fill in:
    - **Base URL** – e.g. `https://portal.cubecharging.com`
-   - **Bearer token** - e.g. API key retrieved from Cube Portal (ht)
+   - **Bearer token** - e.g. API key retrieved from Cube Portal
    - **connector_id** - 1 is the default
    - **idtag_mapping** - e.g the mapping of the RFIDS to cards or persons (for example RFID_1=Car1; RFID_2=Persony) -> this to map transactions to a car or person, especially helpfull when using multiple charge cards
    - **Poll interval** (seconds; default 30)
