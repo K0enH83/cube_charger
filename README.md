@@ -10,13 +10,14 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 
 - **Config flow** (no YAML): enter `base_url`, `bearer_token`, `verify_ssl`, `poll_interval`.
 - **Status sensor**: `sensor.cube_charger_status` shows `online` / `unknown` (backend connectivity).
-- **idTag select**: `select.cube_charger_idtag` (placeholder options for now; will be managed via an options flow next).
+- **idTag select**: `select.cube_charger_idtag` 
 - **Automatic polling** via a `DataUpdateCoordinator`.
-
-**Roadmap (next iterations):**
 - Services: `start_session`, `stop_session`, `sync_history`, `rebuild_history`
 - Options flow for idTags (manage via UI)
 - kWh history aggregation per car (idTag)
+
+**Roadmap (next iterations):**
+-currentEnergy -> depending on fix Cube
 
 ---
 
@@ -52,9 +53,9 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 1. Go to **Settings → Devices & Services → Add Integration** → search for **Cube Charger**
 2. Fill in:
    - **Base URL** – e.g. `https://portal.cubecharging.com`
-   - **Bearer token**
+   - **Bearer token** - e.g. API key retrieved from Cube Portal (ht)
    - **connector_id** - 1 is the default
-   - **idtag_mapping** - e.g the mapping of the charge cards used (for example RFID_1=Car1; RFID_2=Car2)
+   - **idtag_mapping** - e.g the mapping of the RFIDS to cards or persons (for example RFID_1=Car1; RFID_2=Persony) -> this to map transactions to a car or person, especially helpfull when using multiple charge cards
    - **Poll interval** (seconds; default 30)
    - **Verify SSL**
 3. Submit. The integration will connect and create entities right away.
@@ -67,19 +68,41 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 |-------------------------------|--------|--------------------------------------------------------------|
 | `sensor.cube_charger_status`  | Sensor | `online` or `unknown` based on API connectivity              |
 | `select.cube_charger_idtag`   | Select | Choose the active **idTag / car** (placeholder options now) |
+| `sensor.cube_mappedtag_active_sessie`  | Sensor | Intended to show the current transaction energy consumption             |
+| `sensor.cube_mappedtag_energie_totaal`  | Sensor | Sensor to accumulate total energy consumption on specified tag/car/person             |
+| `sensor.cube_mappedtag_laadt_nu`  | Sensor | Sensor to indicate if tag is currently charging              |
 
 ---
 
-## 🧰 Services (coming soon)
+## 🧰 Services
 
-The following services will be added and documented in upcoming releases:
+The following services are available and can be called via **Developer Tools → Services** or automations:
 
-- `cube_charger.start_session`  
-- `cube_charger.stop_session`  
-- `cube_charger.sync_history`  
-- `cube_charger.rebuild_history`
+- **`cube_charger.start_session`**  
+  Starts a charging session on the charger.  
+  **Fields:**  
+  - `chargebox_id` (optional): ChargeBox ID (e.g., NL-1IC-XXXXXXX). Auto-detected if only one box.  
+  - `connector_id` (optional): Connector ID (default: configured connector).  
+  - `idtag` (optional): RFID tag for authorization (uses select entity if omitted).  
 
-They will appear under **Developer Tools → Services** and in `services.yaml` when available.
+- **`cube_charger.stop_session`**  
+  Stops the active charging session.  
+  **Fields:**  
+  - `chargebox_id` (optional): ChargeBox ID. Auto-detected if only one box.  
+  - `transaction_id` (optional): OCPP transaction ID.  
+  - `connector_id` (optional): Connector to stop (required if transaction_id not provided).  
+
+- **`cube_charger.sync_history`**  
+  Fetches historical finished sessions and accumulates energy per car/idTag.  
+  **Fields:**  
+  - `startDate` / `start_date` (optional): Start date in ISO-8601 format (e.g., 2023-10-01T00:00:00Z).  
+  - `endDate` / `end_date` (optional): End date in ISO-8601 format (e.g., 2023-10-31T23:59:59Z).  
+
+- **`cube_charger.rebuild_history`**  
+  Resets totals and recomputes history within the specified date window.  
+  **Fields:**  
+  - `startDate` (required): Start date in ISO-8601 format (e.g., 2023-10-01T00:00:00Z).  
+  - `endDate` (required): End date in ISO-8601 format (e.g., 2023-10-31T23:59:59Z).
 
 ---
 
