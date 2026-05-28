@@ -21,6 +21,7 @@ class CubeChargerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional("idtag_mapping", default=""): str,
             vol.Optional("energy_unit_active", default="kWh"): vol.In(["kWh", "Wh"]),
             vol.Optional("poll_interval", default=30): int,
+            vol.Optional("request_timeout", default=20): vol.All(int, vol.Range(min=1)),
             vol.Optional("verify_ssl", default=True): bool,
         })
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
@@ -44,6 +45,7 @@ class CubeChargerOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Optional("idtag_mapping", default=data.get("idtag_mapping", "")): str,
             vol.Optional("connector_id", default=data.get("connector_id", 1)): int,
             vol.Optional("poll_interval", default=data.get("poll_interval", 30)): int,
+            vol.Optional("request_timeout", default=data.get("request_timeout", 20)): vol.All(int, vol.Range(min=1)),
             vol.Optional("energy_unit_active", default=data.get("energy_unit_active", "kWh")): vol.In(["kWh", "Wh"]),
             vol.Optional("verify_ssl", default=data.get("verify_ssl", True)): bool,
         })

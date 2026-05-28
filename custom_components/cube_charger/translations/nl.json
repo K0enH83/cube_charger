@@ -10,6 +10,7 @@
           "bearer_token": "Bearer token",
           "verify_ssl": "SSL controleren",
           "poll_interval": "Poll-interval (seconden)",
+          "request_timeout": "Timeout voor verzoeken (seconden)",
           "idtag_mapping": "idTag\u2192auto mapping (kommagescheiden)"
         }
       }
