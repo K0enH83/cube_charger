@@ -9,7 +9,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from .api import CubeApi
 from .coordinator import CubeCoordinator
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SELECT]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SELECT, Platform.SWITCH, Platform.NUMBER]
 DOMAIN = "cube_charger"
 STORE_VERSION = 1
 STORE_KEY = "cube_history_state"
@@ -49,6 +49,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "connector_id": int(get("connector_id", 1)),
         "idtag_map": idtag_map,
         "energy_unit_active": get("energy_unit_active", "kWh"),
+        "car_connected_entity": get("car_connected_entity", "") or None,
+        "car_max_current_entity": get("car_max_current_entity", "") or None,
         "store": store,
         "store_data": store_data,
     }

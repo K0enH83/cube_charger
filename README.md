@@ -9,15 +9,18 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 ## ✨ Features (current)
 
 - **Config flow** (no YAML): enter `base_url`, `bearer_token`, `verify_ssl`, `poll_interval`.
-- **Status sensor**: `sensor.cube_charger_status` shows `online` / `unknown` (backend connectivity).
-- **idTag select**: `select.cube_charger_idtag` 
+- **evcc-compatible status sensor**: `sensor.cube_charger_status` reports `A` (ready) or `C` (charging).
+- **Enable switch**: `switch.cube_charger_enable` starts/stops a charging session — usable as evcc's `enable`/`enabled` entity.
+- **Max current number**: `number.cube_charger_max_current` satisfies evcc's required `setMaxCurrent` entity (see [evcc integration](#-evcc-integration) below for the important caveat).
+- **idTag select**: `select.cube_charger_idtag`
 - **Automatic polling** via a `DataUpdateCoordinator`.
 - Services: `start_session`, `stop_session`, `sync_history`, `rebuild_history`, `reset_chargebox`
 - Options flow for idTags (manage via UI)
 - kWh history aggregation per car (idTag)
 
 **Roadmap (next iterations):**
--currentEnergy -> depending on fix Cube
+- currentEnergy -> depending on fix Cube
+- Live power (W) reading, if/when the Cube API exposes meter values
 
 ---
 
@@ -58,6 +61,8 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
    - **idtag_mapping** - e.g the mapping of the RFIDS to cards or persons (for example RFID_1=Car1; RFID_2=Persony) -> this to map transactions to a car or person, especially helpfull when using multiple charge cards
    - **Poll interval** (seconds; default 30)
    - **Verify SSL**
+   - **car_connected_entity** *(optional)* - entity ID of a car-side "plugged in" sensor (e.g. `binary_sensor.myauto_plugged_in`), used to report evcc status `B`
+   - **car_max_current_entity** *(optional)* - entity ID of a car-side `number`/`input_number` that actually controls charging current (e.g. `number.myauto_charging_amps`); every value evcc sets is forwarded to it
 3. Submit. The integration will connect and create entities right away.
 
 ---
@@ -66,11 +71,67 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 
 | Entity                         | Type   | Description                                                  |
 |-------------------------------|--------|--------------------------------------------------------------|
-| `sensor.cube_charger_status`  | Sensor | `online` or `unknown` based on API connectivity              |
+| `sensor.cube_charger_status`  | Sensor | evcc-compatible status: `A` (ready), `B` (connected, needs `car_connected_entity`) or `C` (charging) |
+| `switch.cube_charger_enable`  | Switch | Starts/stops a charging session on the configured connector  |
+| `number.cube_charger_max_current` | Number | Satisfies evcc's `setMaxCurrent`; forwarded to `car_max_current_entity` if configured, otherwise local-only |
+| `sensor.cube_charger_energy_total` | Sensor | Cumulative synced kWh across all cars/idTags on this charger |
 | `select.cube_charger_idtag`   | Select | Choose the active **idTag / car** (placeholder options now) |
 | `sensor.cube_<mappedtag>_active_sessie`  | Sensor | Intended to show the current transaction energy consumption             |
 | `sensor.cube_<mappedtag>_energie_totaal`  | Sensor | Sensor to accumulate total energy consumption on specified tag/car/person             |
 | `sensor.cube_<mappedtag>_laadt_nu`  | Sensor | Sensor to indicate if tag is currently charging              |
+
+---
+
+## 🔌 evcc integration
+
+This integration can be used as an evcc **"Home Assistant" charger**
+(`type: homeassistant` in evcc's `chargers:` config), since evcc auto-discovers
+Home Assistant instances and lets you pick suitable entities per role:
+
+```yaml
+chargers:
+  - name: cube_charger
+    type: homeassistant
+    uri: http://homeassistant.local:8123
+    status: sensor.cube_charger_status
+    enabled: switch.cube_charger_enable
+    enable: switch.cube_charger_enable
+    maxcurrent: number.cube_charger_max_current
+    energy: sensor.cube_charger_energy_total
+```
+
+### Bridging status `B` and `setMaxCurrent` through your car's own entities
+
+The Cube Charging portal API itself has no live connector/plug state and no
+endpoint to set the charging current (no OCPP `SetChargingProfile`
+equivalent). If your car's own Home Assistant integration exposes a "plugged
+in" sensor and a charging-current control, configure them in the integration
+options and the full evcc feature set works:
+
+- **`car_connected_entity`** – a `binary_sensor` (or any entity with an
+  `on`/`off`/`true`/`false`/`connected`/`plugged_in` state) that reflects
+  whether the car is plugged in. When set, `sensor.cube_charger_status`
+  reports `B` whenever this entity is "on" but no session is active, and `C`
+  once Cube reports an active transaction on the configured connector.
+- **`car_max_current_entity`** – a `number` or `input_number` entity that
+  actually limits the car's charging current. When set,
+  `number.cube_charger_max_current` initializes its min/max/step/value from
+  that entity and forwards every value evcc writes to it via
+  `number.set_value` / `input_number.set_value`, so the limit is really
+  applied. `switch.cube_charger_enable` still does the actual start/stop.
+
+Without these two options, `sensor.cube_charger_status` can only report `A`
+(ready) or `C` (charging) — it can't distinguish "connected, not yet
+charging" — and `number.cube_charger_max_current` is a local, evcc-schema-only
+value that isn't applied anywhere.
+
+**Live power (W) reading:** energy is only available via the periodic
+(10 min, or manually triggered) history sync, not a live meter value, so
+`sensor.cube_charger_energy_total` updates in bursts rather than in real
+time. If you need live power for evcc's PV-surplus control loop, consider
+pairing this with a separate power meter (smart plug / CT clamp, or one
+exposed by your car's integration) and pointing evcc's `power` at that
+entity instead.
 
 ---
 
@@ -116,4 +177,5 @@ The following services are available and can be called via **Developer Tools →
 
 - **Integration not visible after install**  
   → Fully **restart Home Assistant** (Settings → System → **Restart**).
-- **Status stuck at `unknown`**  
+- **`sensor.cube_charger_status` stuck at `A`**  
+  → Check `bearer_token` / `base_url` and that a car is actually plugged in and started via `switch.cube_charger_enable` or the `start_session` service; the sensor only flips to `C` while a transaction is active.

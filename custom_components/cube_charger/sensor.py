@@ -78,6 +78,88 @@ class CubeCarActiveEnergySensor(SensorEntity):
 
         self._attr_native_value = round(value_kwh, 3)
 
+_CONNECTED_TRUE_STATES = {"on", "true", "1", "connected", "plugged_in", "yes"}
+
+class CubeChargerStatusSensor(SensorEntity):
+    """evcc-compatible status: 'C' while charging, 'B' while connected, else 'A'.
+
+    The Cube Charging API itself has no live connector/plug state, so 'B'
+    (connected, not charging) is sourced from an external, car-side entity
+    configured via `car_connected_entity` (e.g. the car's own "plugged in"
+    binary sensor). Without that option it falls back to 'A'/'C' only.
+    """
+
+    _attr_icon = "mdi:ev-station"
+
+    def __init__(self, hass: HomeAssistant, entry_id: str, api: CubeApi, connector_id: int, car_connected_entity: str | None):
+        self.hass = hass
+        self.entry_id = entry_id
+        self.api = api
+        self.connector_id = connector_id
+        self.car_connected_entity = car_connected_entity
+        self._attr_name = "Cube Charger Status"
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_evcc_status"
+
+    def _is_car_connected(self) -> bool:
+        if not self.car_connected_entity:
+            return False
+        state = self.hass.states.get(self.car_connected_entity)
+        if not state:
+            return False
+        return state.state.lower() in _CONNECTED_TRUE_STATES
+
+    async def async_update(self):
+        data = self.hass.data[DOMAIN][self.entry_id]
+        coord = data["coord"]
+        cids = list((coord.data or {}).keys())
+        chargebox_id = cids[0] if cids else None
+        charging = False
+        if chargebox_id:
+            txs = await self.api.active_transactions(chargebox_id)
+            charging = any(t.get("connectorId") == self.connector_id for t in txs)
+
+        if charging:
+            self._attr_native_value = "C"
+        elif self._is_car_connected():
+            self._attr_native_value = "B"
+        else:
+            self._attr_native_value = "A"
+
+
+class CubeChargerTotalEnergySensor(SensorEntity, RestoreEntity):
+    """Cumulative synced energy (kWh) across all cars/idTags on this charger.
+
+    Fed by the periodic (10 min) / manual history sync, not a live meter
+    reading, since the Cube API does not expose live power values.
+    """
+
+    _attr_device_class = "energy"
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_state_class = "total_increasing"
+
+    def __init__(self, hass: HomeAssistant, entry_id: str):
+        self.hass = hass
+        self.entry_id = entry_id
+        self._attr_name = "Cube Charger Energy Total"
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_evcc_energy_total"
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if (last := await self.async_get_last_state()) is not None:
+            try:
+                self._attr_native_value = float(last.state)
+            except:  # noqa
+                self._attr_native_value = 0.0
+        self.hass.bus.async_listen(f"{DOMAIN}_history_updated", self._on_history_updated)
+
+    @callback
+    def _on_history_updated(self, _):
+        data = self.hass.data[DOMAIN][self.entry_id]["store_data"]
+        total = sum(data["totals"].values())
+        self._attr_native_value = round(total, 3)
+        self.async_write_ha_state()
+
+
 class CubeWhoIsChargingSensor(SensorEntity):
     """Text sensor showing which idTag/auto is currently charging."""
     _attr_icon = "mdi:account"
@@ -157,6 +239,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     idmap = data["idtag_map"]
 
     entities = []
+
+    # evcc-compatible status + overall energy total
+    entities.append(CubeChargerStatusSensor(hass, entry.entry_id, api, data["connector_id"], data["car_connected_entity"]))
+    entities.append(CubeChargerTotalEnergySensor(hass, entry.entry_id))
 
     # cumulatief + actief per auto
     for car in sorted(set(idmap.values())):
