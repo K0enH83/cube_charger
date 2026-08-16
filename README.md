@@ -179,3 +179,9 @@ The following services are available and can be called via **Developer Tools →
   → Fully **restart Home Assistant** (Settings → System → **Restart**).
 - **`sensor.cube_charger_status` stuck at `A`**  
   → Check `bearer_token` / `base_url` and that a car is actually plugged in and started via `switch.cube_charger_enable` or the `start_session` service; the sensor only flips to `C` while a transaction is active.
+
+---
+
+## 🙌 Contributors
+
+- [@marconijmeijer](https://github.com/marconijmeijer) — evcc "Home Assistant charger" support: `switch.cube_charger_enable`, `number.cube_charger_max_current`, `sensor.cube_charger_status`/`energy_total`, and the `car_connected_entity`/`car_max_current_entity` bridge (v0.6.0).
