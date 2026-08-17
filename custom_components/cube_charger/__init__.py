@@ -25,7 +25,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         get("base_url", "https://portal.cubecharging.com"),
         get("bearer_token"),
         get("verify_ssl", True),
-        int(get("request_timeout", 20)),
+        int(get("request_timeout", 45)),
     )
     coord = CubeCoordinator(hass, api, int(get("poll_interval", 30)))
     await coord.async_config_entry_first_refresh()

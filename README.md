@@ -125,6 +125,16 @@ Without these two options, `sensor.cube_charger_status` can only report `A`
 charging" — and `number.cube_charger_max_current` is a local, evcc-schema-only
 value that isn't applied anywhere.
 
+**Why `switch.cube_charger_enable` responds instantly:** Cube's remote-start/
+-stop calls proxy an OCPP round trip to the physical charger and can take
+much longer than typical HTTP client timeouts — including evcc's own request
+to Home Assistant's `POST /api/services/switch/turn_on`. So the switch
+applies the requested state optimistically and fires the actual Cube API
+call in the background; if that call fails, the state is reverted (and the
+next poll reconciles it either way). If evcc still reports a charger-enable
+error, check the Home Assistant log for `cube_charger.start_session failed`
+/ `cube_charger.stop_session failed` for the real cause.
+
 **Live power (W) reading:** energy is only available via the periodic
 (10 min, or manually triggered) history sync, not a live meter value, so
 `sensor.cube_charger_energy_total` updates in bursts rather than in real

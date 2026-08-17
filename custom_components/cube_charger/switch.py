@@ -1,9 +1,12 @@
 
 from __future__ import annotations
+import logging
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from . import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class CubeChargerEnableSwitch(SwitchEntity):
@@ -11,6 +14,13 @@ class CubeChargerEnableSwitch(SwitchEntity):
 
     Exposed so it can be used as both the `enable` (control) and `enabled`
     (readback) entity of evcc's generic "Home Assistant" charger template.
+
+    Cube's remote-start/-stop calls proxy an OCPP round trip to the physical
+    charger and can take well beyond typical HTTP client timeouts (evcc's
+    REST call to `/api/services/switch/turn_on` included). So the actual API
+    call is fired in the background instead of being awaited here — HA (and
+    evcc) get an immediate response with the optimistic new state, and it's
+    corrected on the next `async_update` (or immediately, if the call fails).
     """
 
     _attr_icon = "mdi:ev-station"
@@ -36,14 +46,23 @@ class CubeChargerEnableSwitch(SwitchEntity):
         self._attr_is_on = any(t.get("connectorId") == connector_id for t in txs)
 
     async def async_turn_on(self, **kwargs) -> None:
-        await self.hass.services.async_call(DOMAIN, "start_session", {}, blocking=True)
         self._attr_is_on = True
         self.async_write_ha_state()
+        self.hass.async_create_task(self._async_call_service("start_session", desired_state=True))
 
     async def async_turn_off(self, **kwargs) -> None:
-        await self.hass.services.async_call(DOMAIN, "stop_session", {}, blocking=True)
         self._attr_is_on = False
         self.async_write_ha_state()
+        self.hass.async_create_task(self._async_call_service("stop_session", desired_state=False))
+
+    async def _async_call_service(self, service: str, *, desired_state: bool) -> None:
+        try:
+            await self.hass.services.async_call(DOMAIN, service, {}, blocking=True)
+        except Exception:
+            _LOGGER.exception("cube_charger.%s failed", service)
+            # Revert the optimistic state; the next async_update will reconcile it anyway.
+            self._attr_is_on = not desired_state
+            self.async_write_ha_state()
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
