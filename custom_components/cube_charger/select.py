@@ -19,4 +19,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     data = hass.data[DOMAIN][entry.entry_id]
     idmap = data["idtag_map"]
     options = [f"{k} ({v})" for k, v in idmap.items()] or ["RFID123456 (voorbeeld)"]
-    async_add_entities([CubeIdTagSelect(options)])
+    entity = CubeIdTagSelect(options)
+    entity._attr_device_info = data["device_info"]
+    async_add_entities([entity])

@@ -63,7 +63,7 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
    - **Verify SSL**
    - **car_connected_entity** *(optional)* - entity ID of a car-side "plugged in" sensor (e.g. `binary_sensor.myauto_plugged_in`), used to report evcc status `B`
    - **car_max_current_entity** *(optional)* - entity ID of a car-side `number`/`input_number` that actually controls charging current (e.g. `number.myauto_charging_amps`); every value evcc sets is forwarded to it
-3. Submit. The integration will connect and create entities right away.
+3. Submit. The integration will connect and create entities right away, grouped under a single **Cube Charger** device that you can assign to an area/room (Settings → Devices & Services → Cube Charger → the device page has an **Area** picker).
 
 ---
 
@@ -184,4 +184,4 @@ The following services are available and can be called via **Developer Tools →
 
 ## 🙌 Contributors
 
-- [@marconijmeijer](https://github.com/marconijmeijer) — evcc "Home Assistant charger" support: `switch.cube_charger_enable`, `number.cube_charger_max_current`, `sensor.cube_charger_status`/`energy_total`, and the `car_connected_entity`/`car_max_current_entity` bridge (v0.6.0).
+- [@marconijmeijer](https://github.com/marconijmeijer) — evcc "Home Assistant charger" support: `switch.cube_charger_enable`, `number.cube_charger_max_current`, `sensor.cube_charger_status`/`energy_total`, the `car_connected_entity`/`car_max_current_entity` bridge, and grouping all entities under a single assignable device (v0.6.0–v0.7.0).

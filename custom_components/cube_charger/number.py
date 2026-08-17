@@ -89,6 +89,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     if cids:
         box = coord.data[cids[0]]
         max_current = box.get("maximumConnectorCurrent") or box.get("maximumSystemCurrent") or DEFAULT_MAX_CURRENT
-    async_add_entities([
-        CubeChargerMaxCurrentNumber(hass, entry.entry_id, int(max_current), data["car_max_current_entity"])
-    ])
+    entity = CubeChargerMaxCurrentNumber(hass, entry.entry_id, int(max_current), data["car_max_current_entity"])
+    entity._attr_device_info = data["device_info"]
+    async_add_entities([entity])

@@ -253,4 +253,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     # wie-laadt-nu sensor (1 tekstsensor)
     entities.append(CubeWhoIsChargingSensor(hass, entry.entry_id, api))
 
+    for entity in entities:
+        entity._attr_device_info = data["device_info"]
+
     async_add_entities(entities, True)

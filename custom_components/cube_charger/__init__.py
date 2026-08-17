@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.event import async_track_time_interval
 from .api import CubeApi
@@ -43,6 +44,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     store_data.setdefault("last_stop_ts", None)
     store_data.setdefault("processed_pks", [])
 
+    boxes = list((coord.data or {}).values())
+    box = boxes[0] if boxes else {}
+    device_info = DeviceInfo(
+        identifiers={(DOMAIN, entry.entry_id)},
+        manufacturer="Cube Charging",
+        name=box.get("description") or entry.title or "Cube Charger",
+        model=box.get("chargePointModel"),
+        sw_version=box.get("fwVersion"),
+        serial_number=box.get("chargePointSerialNumber"),
+        configuration_url=get("base_url", "https://portal.cubecharging.com"),
+    )
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "api": api,
         "coord": coord,
@@ -51,6 +64,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "energy_unit_active": get("energy_unit_active", "kWh"),
         "car_connected_entity": get("car_connected_entity", "") or None,
         "car_max_current_entity": get("car_max_current_entity", "") or None,
+        "device_info": device_info,
         "store": store,
         "store_data": store_data,
     }

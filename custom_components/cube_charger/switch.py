@@ -47,4 +47,7 @@ class CubeChargerEnableSwitch(SwitchEntity):
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
-    async_add_entities([CubeChargerEnableSwitch(hass, entry.entry_id)])
+    data = hass.data[DOMAIN][entry.entry_id]
+    entity = CubeChargerEnableSwitch(hass, entry.entry_id)
+    entity._attr_device_info = data["device_info"]
+    async_add_entities([entity])
