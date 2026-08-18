@@ -1,6 +1,6 @@
-# Cube Charger – Home Assistant custom integration
+# Cube Charger – Home Assistant custom integration - EVCC COMPATIBLE
 
-A community integration for **Cube Charging** that adds your charger to Home Assistant.
+A community integration for **Cube Charging** that adds your charger to Home Assistant AND that can be used with evcc
 
 > **Status:** Active development. The base is in place (config flow, status sensor, idTag select). Start/stop services and history features will be added iteratively.
 
