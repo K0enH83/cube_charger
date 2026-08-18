@@ -8,7 +8,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.event import async_track_time_interval
 from .api import CubeApi
-from .coordinator import CubeCoordinator
+from .coordinator import CubeCoordinator, CubeTransactionsCoordinator
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SELECT, Platform.SWITCH, Platform.NUMBER]
 DOMAIN = "cube_charger"
@@ -27,8 +27,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         get("verify_ssl", True),
         int(get("request_timeout", 45)),
     )
-    coord = CubeCoordinator(hass, api, int(get("poll_interval", 30)))
+    poll_interval = int(get("poll_interval", 30))
+    coord = CubeCoordinator(hass, api, poll_interval)
     await coord.async_config_entry_first_refresh()
+
+    tx_coord = CubeTransactionsCoordinator(hass, api, poll_interval, coord)
+    await tx_coord.async_config_entry_first_refresh()
 
     mapping_str = get("idtag_mapping", "")
     idtag_map = {}
@@ -59,6 +63,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "api": api,
         "coord": coord,
+        "tx_coord": tx_coord,
         "connector_id": int(get("connector_id", 1)),
         "idtag_map": idtag_map,
         "energy_unit_active": get("energy_unit_active", "kWh"),

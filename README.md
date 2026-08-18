@@ -13,7 +13,7 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 - **Enable switch**: `switch.cube_charger_enable` starts/stops a charging session — usable as evcc's `enable`/`enabled` entity.
 - **Max current number**: `number.cube_charger_max_current` satisfies evcc's required `setMaxCurrent` entity (see [evcc integration](#-evcc-integration) below for the important caveat).
 - **idTag select**: `select.cube_charger_idtag`
-- **Automatic polling** via a `DataUpdateCoordinator`.
+- **Automatic polling** via two shared `DataUpdateCoordinator`s (chargebox details, active transactions) — every entity that needs live transaction state reads from the same poll instead of each making its own API call.
 - Services: `start_session`, `stop_session`, `sync_history`, `rebuild_history`, `reset_chargebox`
 - Options flow for idTags (manage via UI)
 - kWh history aggregation per car (idTag)
@@ -134,6 +134,14 @@ call in the background; if that call fails, the state is reverted (and the
 next poll reconciles it either way). If evcc still reports a charger-enable
 error, check the Home Assistant log for `cube_charger.start_session failed`
 / `cube_charger.stop_session failed` for the real cause.
+
+**Why entities share one `active_transactions` poll:** the switch, status
+sensor, "who's charging" sensor and per-car sensors all need the same
+active-transaction data. Each polling independently (as in versions before
+0.8.0) multiplied API calls ~5x per interval and could trip Home Assistant's
+"took longer than the scheduled update interval" / "setup ... is taking over
+10 seconds" warnings. They now all read from one shared
+`CubeTransactionsCoordinator` poll instead.
 
 **Live power (W) reading:** energy is only available via the periodic
 (10 min, or manually triggered) history sync, not a live meter value, so
