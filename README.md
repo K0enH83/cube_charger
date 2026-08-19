@@ -143,6 +143,17 @@ active-transaction data. Each polling independently (as in versions before
 10 seconds" warnings. They now all read from one shared
 `CubeTransactionsCoordinator` poll instead.
 
+**Why polling uses a fixed 15s timeout, separate from `request_timeout`:**
+`request_timeout` is meant for remote-start/-stop, which proxy a slow OCPP
+round trip and are only ever called from a background task, not from a
+coordinator. Reusing that same (generous, e.g. 45s) value for the periodic
+`active_transactions`/chargebox-details polling meant one slow response
+could stall the coordinator — and therefore the switch/status/energy
+entities that depend on it — for up to `request_timeout` seconds, logging
+"Timeout fetching Cube Charger Transactions data". Polling reads now always
+use a short, fixed 15s timeout instead, so a slow poll fails fast and
+recovers on the next cycle rather than blocking everything.
+
 **Live power (W) reading:** energy is only available via the periodic
 (10 min, or manually triggered) history sync, not a live meter value, so
 `sensor.cube_charger_energy_total` updates in bursts rather than in real
