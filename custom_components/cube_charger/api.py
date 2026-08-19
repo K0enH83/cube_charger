@@ -3,12 +3,6 @@ from __future__ import annotations
 import aiohttp
 from typing import Any, Optional
 
-# Read-only polling calls (chargebox details, active/history transactions) are driven by
-# DataUpdateCoordinators on a short, fixed interval. They get their own short timeout so a
-# slow/hanging Cube backend can't stall a coordinator refresh for as long as `timeout` (which
-# is set generously to accommodate slow remote-start/-stop OCPP round trips, not polling reads).
-READ_TIMEOUT = 15
-
 class CubeApi:
     def __init__(self, base_url: str, bearer_token: str, verify_ssl: bool=True, timeout: int = 20):
         self.base_url = base_url.rstrip("/")
@@ -22,12 +16,9 @@ class CubeApi:
     def _session_timeout(self) -> aiohttp.ClientTimeout:
         return aiohttp.ClientTimeout(total=self.timeout)
 
-    def _read_timeout(self) -> aiohttp.ClientTimeout:
-        return aiohttp.ClientTimeout(total=READ_TIMEOUT)
-
     async def list_chargeboxes(self) -> list[dict[str, Any]]:
         url = f"{self.base_url}/api/v1/CubeCharging/chargebox/details"
-        async with aiohttp.ClientSession(timeout=self._read_timeout()) as s:
+        async with aiohttp.ClientSession(timeout=self._session_timeout()) as s:
             async with s.get(url, headers=self._headers(), ssl=self.verify_ssl) as r:
                 r.raise_for_status()
                 data = await r.json()
@@ -59,7 +50,7 @@ class CubeApi:
     async def active_transactions(self, chargebox_id: str, offset: int = 0, limit: int = 100) -> list[dict[str, Any]]:
         url = f"{self.base_url}/api/v1/CubeCharging/chargebox/transactions/active"
         params = {"chargeBoxId": chargebox_id, "offset": offset, "limit": limit}
-        async with aiohttp.ClientSession(timeout=self._read_timeout()) as s:
+        async with aiohttp.ClientSession(timeout=self._session_timeout()) as s:
             async with s.get(url, params=params, headers=self._headers(), ssl=self.verify_ssl) as r:
                 r.raise_for_status()
                 data = await r.json()

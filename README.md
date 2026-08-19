@@ -9,18 +9,20 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 ## ✨ Features (current)
 
 - **Config flow** (no YAML): enter `base_url`, `bearer_token`, `verify_ssl`, `poll_interval`.
-- **evcc-compatible status sensor**: `sensor.cube_charger_status` reports `A` (ready) or `C` (charging).
+- **evcc-compatible status sensor**: `sensor.cube_charger_status` reports `A` (ready), `B` (connected) or `C` (charging) — real `B` if you set up a webhook subscription, best-effort otherwise.
 - **Enable switch**: `switch.cube_charger_enable` starts/stops a charging session — usable as evcc's `enable`/`enabled` entity.
 - **Max current number**: `number.cube_charger_max_current` satisfies evcc's required `setMaxCurrent` entity (see [evcc integration](#-evcc-integration) below for the important caveat).
 - **idTag select**: `select.cube_charger_idtag`
 - **Automatic polling** via two shared `DataUpdateCoordinator`s (chargebox details, active transactions) — every entity that needs live transaction state reads from the same poll instead of each making its own API call.
+- **Webhook receiver** (see [Webhook support](#-webhook-support) below) — parses Cube's `Session_started`/`Session_stopped`/`Status_changed`/`Session_progress` events for real-time status, session energy and instant total-energy updates, and triggers an immediate refresh either way.
 - Services: `start_session`, `stop_session`, `sync_history`, `rebuild_history`, `reset_chargebox`
 - Options flow for idTags (manage via UI)
 - kWh history aggregation per car (idTag)
 
 **Roadmap (next iterations):**
-- currentEnergy -> depending on fix Cube
-- Live power (W) reading, if/when the Cube API exposes meter values
+- Live power (W) reading in Watts (only offered-current and cumulative Wh are available via webhooks so far)
+- Confirm whether `Status_progress` is a real, current event or stale docs
+- Document where the Cube portal surfaces the webhook HMAC secret
 
 ---
 
@@ -63,6 +65,7 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
    - **Verify SSL**
    - **car_connected_entity** *(optional)* - entity ID of a car-side "plugged in" sensor (e.g. `binary_sensor.myauto_plugged_in`), used to report evcc status `B`
    - **car_max_current_entity** *(optional)* - entity ID of a car-side `number`/`input_number` that actually controls charging current (e.g. `number.myauto_charging_amps`); every value evcc sets is forwarded to it
+   - **webhook_secret** *(optional, recommended once found)* - verifies the `X-CubeSignature` header on incoming webhook events; see [Webhook support](#-webhook-support)
 3. Submit. The integration will connect and create entities right away, grouped under a single **Cube Charger** device that you can assign to an area/room (Settings → Devices & Services → Cube Charger → the device page has an **Area** picker).
 
 ---
@@ -75,6 +78,7 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 | `switch.cube_charger_enable`  | Switch | Starts/stops a charging session on the configured connector  |
 | `number.cube_charger_max_current` | Number | Satisfies evcc's `setMaxCurrent`; forwarded to `car_max_current_entity` if configured, otherwise local-only |
 | `sensor.cube_charger_energy_total` | Sensor | Cumulative synced kWh across all cars/idTags on this charger |
+| `sensor.cube_charger_offered_current` | Sensor | OCPP `Current.Offered` (A) from a webhook `Session_progress` event — informational, not measured draw |
 | `select.cube_charger_idtag`   | Select | Choose the active **idTag / car** (placeholder options now) |
 | `sensor.cube_<mappedtag>_active_sessie`  | Sensor | Intended to show the current transaction energy consumption             |
 | `sensor.cube_<mappedtag>_energie_totaal`  | Sensor | Sensor to accumulate total energy consumption on specified tag/car/person             |
@@ -102,11 +106,13 @@ chargers:
 
 ### Bridging status `B` and `setMaxCurrent` through your car's own entities
 
-The Cube Charging portal API itself has no live connector/plug state and no
+The Cube Charging polling API itself has no live connector/plug state and no
 endpoint to set the charging current (no OCPP `SetChargingProfile`
-equivalent). If your car's own Home Assistant integration exposes a "plugged
-in" sensor and a charging-current control, configure them in the integration
-options and the full evcc feature set works:
+equivalent) — a [webhook subscription](#-webhook-support) solves the status
+side, but not max-current control. If your car's own Home Assistant
+integration exposes a "plugged in" sensor and a charging-current control,
+configure them in the integration options and the full evcc feature set
+works even without webhooks:
 
 - **`car_connected_entity`** – a `binary_sensor` (or any entity with an
   `on`/`off`/`true`/`false`/`connected`/`plugged_in` state) that reflects
@@ -120,10 +126,11 @@ options and the full evcc feature set works:
   `number.set_value` / `input_number.set_value`, so the limit is really
   applied. `switch.cube_charger_enable` still does the actual start/stop.
 
-Without these two options, `sensor.cube_charger_status` can only report `A`
-(ready) or `C` (charging) — it can't distinguish "connected, not yet
-charging" — and `number.cube_charger_max_current` is a local, evcc-schema-only
-value that isn't applied anywhere.
+Without `car_connected_entity` and no webhook subscription either,
+`sensor.cube_charger_status` can only report `A` (ready) or `C` (charging) —
+it can't distinguish "connected, not yet charging". Without
+`car_max_current_entity`, `number.cube_charger_max_current` is a local,
+evcc-schema-only value that isn't applied anywhere.
 
 **Why `switch.cube_charger_enable` responds instantly:** Cube's remote-start/
 -stop calls proxy an OCPP round trip to the physical charger and can take
@@ -143,17 +150,6 @@ active-transaction data. Each polling independently (as in versions before
 10 seconds" warnings. They now all read from one shared
 `CubeTransactionsCoordinator` poll instead.
 
-**Why polling uses a fixed 15s timeout, separate from `request_timeout`:**
-`request_timeout` is meant for remote-start/-stop, which proxy a slow OCPP
-round trip and are only ever called from a background task, not from a
-coordinator. Reusing that same (generous, e.g. 45s) value for the periodic
-`active_transactions`/chargebox-details polling meant one slow response
-could stall the coordinator — and therefore the switch/status/energy
-entities that depend on it — for up to `request_timeout` seconds, logging
-"Timeout fetching Cube Charger Transactions data". Polling reads now always
-use a short, fixed 15s timeout instead, so a slow poll fails fast and
-recovers on the next cycle rather than blocking everything.
-
 **Live power (W) reading:** energy is only available via the periodic
 (10 min, or manually triggered) history sync, not a live meter value, so
 `sensor.cube_charger_energy_total` updates in bursts rather than in real
@@ -161,6 +157,64 @@ time. If you need live power for evcc's PV-surplus control loop, consider
 pairing this with a separate power meter (smart plug / CT clamp, or one
 exposed by your car's integration) and pointing evcc's `power` at that
 entity instead.
+
+---
+
+## 🪝 Webhook support
+
+The Cube Charging portal API supports webhook subscriptions
+(`POST`/`PUT /api/v1/CubeCharging/webhook/subscription`) that push events —
+`Session_started`, `Session_stopped`, `Status_changed`, `Session_progress` —
+to a URL of your choice, instead of you having to poll for them. This
+integration registers a Home Assistant webhook receiver and parses all four:
+
+- **`Status_changed`** — the real OCPP `status` (e.g. `Charging`,
+  `Preparing`, `SuspendedEVSE`) is mapped straight to evcc's `A`/`B`/`C` and
+  overrides the polling-based guess, so `sensor.cube_charger_status` can
+  finally report a genuine `B` without needing `car_connected_entity`. The
+  raw OCPP status and `errorCode` are also exposed as attributes.
+- **`Session_progress`** — parses the OCPP `meterValue`/`sampledValue`
+  payload: the default-measurand entry (`Energy.Active.Import.Register`, Wh)
+  feeds the per-car active-session sensor (`sensor.cube_<car>_actieve_sessie`)
+  with a real value for the first time — `active_transactions` has no energy
+  field at all, so without a webhook subscription this sensor is always 0.
+  `Current.Offered` (A) is exposed as `sensor.cube_charger_offered_current`
+  — informational only (it's the offered limit, not measured draw, so don't
+  wire it into evcc's `currentL1/L2/L3`).
+- **`Session_started`** / **`Session_stopped`** — track `meterStart`/
+  `meterStop` (Wh) to compute the session's energy, and `Session_stopped`
+  applies that delta to the car's running total **immediately**
+  (`sensor.cube_<car>_energie_totaal` / `sensor.cube_charger_energy_total`)
+  instead of waiting for the periodic (10 min) history sync. The same
+  transaction ID is marked processed so the later sync doesn't double-count it.
+
+Every event also triggers an immediate refresh of both polling coordinators,
+so even entities not directly fed by a webhook update close to instantly
+instead of waiting up to `poll_interval` seconds.
+
+**Setup:** after (re)start, look for a persistent notification titled
+**"Cube Charger: webhook available"** — it has your instance's webhook URL
+and a ready-to-fill-in `curl` command to register the subscription (fill in
+your own `Authorization: Bearer` API key; it's never entered into Home
+Assistant for this). If you have Home Assistant Cloud (Nabu Casa), that URL
+is already publicly reachable with no extra setup. Without a subscription,
+everything falls back to the polling-only behavior described above.
+
+**Security — set `webhook_secret`:** every webhook request carries an
+`X-CubeSignature` header (Base64 HMAC-SHA256 of the raw body). Since this
+integration now trusts webhook content for real state (status, session
+energy, totals), set the matching `webhook_secret` in the integration's
+options as soon as you've located it in the Cube portal — requests are then
+cryptographically verified and rejected (HTTP 401) if the signature doesn't
+match. **Without a configured secret, events are still processed** (the
+webhook URL itself is still an unguessable secret), but anyone who obtains
+the URL could in theory inject fake status or energy. If you find where the
+Cube portal surfaces this secret, an issue/PR to document it is welcome.
+
+Not-yet-confirmed: a flatter `Status_progress` event (with `currentEnergy` in
+kWh) has turned up in some docs but wasn't in the advertised subscribable
+event list — it's handled defensively if it ever arrives, but isn't assumed
+reliable.
 
 ---
 

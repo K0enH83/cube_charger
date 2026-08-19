@@ -6,8 +6,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.const import UnitOfEnergy
-from . import DOMAIN
+from homeassistant.const import UnitOfElectricCurrent, UnitOfEnergy
+from . import DOMAIN, map_ocpp_status
 from .coordinator import CubeTransactionsCoordinator
 
 class CubeCarTotalEnergySensor(SensorEntity, RestoreEntity):
@@ -56,6 +56,15 @@ class CubeCarActiveEnergySensor(CoordinatorEntity[CubeTransactionsCoordinator], 
     @property
     def native_value(self) -> float:
         idmap = self.hass.data[DOMAIN][self.entry_id]["idtag_map"]
+
+        # Prefer the webhook-derived session energy (real OCPP MeterValues) for
+        # this car's currently-tracked transaction; active_transactions has no
+        # energy field at all, so without a webhook subscription this is 0.
+        webhook_state = self.hass.data[DOMAIN][self.entry_id]["webhook_state"]
+        if idmap.get(webhook_state.get("idtag")) == self.car_name and webhook_state.get("latest_meter_wh") is not None:
+            start = webhook_state.get("meter_start_wh") or 0.0
+            return round(max(webhook_state["latest_meter_wh"] - start, 0.0) / 1000.0, 3)
+
         value_kwh = 0.0
         for t in self.coordinator.data or []:
             idtag = t.get("idTag")
@@ -76,10 +85,12 @@ _CONNECTED_TRUE_STATES = {"on", "true", "1", "connected", "plugged_in", "yes"}
 class CubeChargerStatusSensor(CoordinatorEntity[CubeTransactionsCoordinator], SensorEntity):
     """evcc-compatible status: 'C' while charging, 'B' while connected, else 'A'.
 
-    The Cube Charging API itself has no live connector/plug state, so 'B'
-    (connected, not charging) is sourced from an external, car-side entity
-    configured via `car_connected_entity` (e.g. the car's own "plugged in"
-    binary sensor). Without that option it falls back to 'A'/'C' only.
+    Prefers the real OCPP status pushed via a `Status_changed` webhook event
+    when one has been received. The Cube Charging polling API itself has no
+    live connector/plug state, so without a webhook subscription, 'B'
+    (connected, not charging) instead falls back to an external, car-side
+    entity configured via `car_connected_entity` (e.g. the car's own "plugged
+    in" binary sensor) - without that option either, it's 'A'/'C' only.
     """
 
     _attr_icon = "mdi:ev-station"
@@ -102,7 +113,14 @@ class CubeChargerStatusSensor(CoordinatorEntity[CubeTransactionsCoordinator], Se
         return state.state.lower() in _CONNECTED_TRUE_STATES
 
     @property
+    def _webhook_status(self) -> str | None:
+        return self.hass.data[DOMAIN][self.entry_id]["webhook_state"].get("status")
+
+    @property
     def native_value(self) -> str:
+        mapped = map_ocpp_status(self._webhook_status)
+        if mapped is not None:
+            return mapped
         txs = self.coordinator.data or []
         charging = any(t.get("connectorId") == self.connector_id for t in txs)
         if charging:
@@ -110,6 +128,44 @@ class CubeChargerStatusSensor(CoordinatorEntity[CubeTransactionsCoordinator], Se
         if self._is_car_connected():
             return "B"
         return "A"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        webhook_state = self.hass.data[DOMAIN][self.entry_id]["webhook_state"]
+        attrs = {}
+        if webhook_state.get("status") is not None:
+            attrs["ocpp_status"] = webhook_state["status"]
+        if webhook_state.get("error_code") is not None:
+            attrs["ocpp_error_code"] = webhook_state["error_code"]
+        return attrs
+
+
+class CubeChargerOfferedCurrentSensor(CoordinatorEntity[CubeTransactionsCoordinator], SensorEntity):
+    """Current (A) the EVSE is offering to the car, from a webhook `Session_progress` event.
+
+    This is the OCPP `Current.Offered` measurand - the limit being offered,
+    not a measurement of actual current draw - so it's informational only and
+    not meant to feed evcc's currentL1/L2/L3 fields (those expect real
+    measured current). Only populated if a webhook subscription is set up;
+    otherwise stays unknown. Rides on the shared coordinator purely so it
+    re-renders immediately when a webhook-triggered refresh happens, not
+    because it needs the coordinator's own polled data.
+    """
+
+    _attr_device_class = "current"
+    _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
+    _attr_icon = "mdi:current-ac"
+
+    def __init__(self, hass: HomeAssistant, entry_id: str, coordinator: CubeTransactionsCoordinator):
+        super().__init__(coordinator)
+        self.hass = hass
+        self.entry_id = entry_id
+        self._attr_name = "Cube Charger Offered Current"
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_offered_current"
+
+    @property
+    def native_value(self) -> float | None:
+        return self.hass.data[DOMAIN][self.entry_id]["webhook_state"].get("latest_current_a")
 
 
 class CubeChargerTotalEnergySensor(SensorEntity, RestoreEntity):
@@ -210,6 +266,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
     # evcc-compatible status + overall energy total
     entities.append(CubeChargerStatusSensor(hass, entry.entry_id, tx_coord, data["connector_id"], data["car_connected_entity"]))
+    entities.append(CubeChargerOfferedCurrentSensor(hass, entry.entry_id, tx_coord))
     entities.append(CubeChargerTotalEnergySensor(hass, entry.entry_id))
 
     # cumulatief + actief per auto

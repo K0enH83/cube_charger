@@ -25,6 +25,7 @@ class CubeChargerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional("verify_ssl", default=True): bool,
             vol.Optional("car_connected_entity", default=""): str,
             vol.Optional("car_max_current_entity", default=""): str,
+            vol.Optional("webhook_secret", default=""): str,
         })
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
@@ -52,5 +53,6 @@ class CubeChargerOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Optional("verify_ssl", default=data.get("verify_ssl", True)): bool,
             vol.Optional("car_connected_entity", default=data.get("car_connected_entity", "")): str,
             vol.Optional("car_max_current_entity", default=data.get("car_max_current_entity", "")): str,
+            vol.Optional("webhook_secret", default=data.get("webhook_secret", "")): str,
         })
         return self.async_show_form(step_id="init", data_schema=schema)
