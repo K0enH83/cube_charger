@@ -4,7 +4,64 @@
     "step": {
       "user": {
         "title": "Configureer Cube Charger",
-        "description": "Voer portal-URL, Bearer token en idTag→auto mapping in."
+        "description": "Voer portal-URL, Bearer token en idTag→auto mapping in.",
+        "data": {
+          "base_url": "Basis-URL",
+          "bearer_token": "Bearer token",
+          "connector_id": "Connector-ID",
+          "idtag_mapping": "idTag→auto mapping (kommagescheiden)",
+          "energy_unit_active": "Eenheid actieve sessie-energie",
+          "poll_interval": "Poll-interval (seconden)",
+          "request_timeout": "Timeout voor verzoeken (seconden)",
+          "verify_ssl": "SSL controleren",
+          "car_connected_entity": "Auto stekker-sensor (optioneel)",
+          "car_max_current_entity": "Auto max-stroom-regeling (optioneel)",
+          "webhook_secret": "Webhook secret (optioneel)"
+        },
+        "data_description": {
+          "car_connected_entity": "Optioneel — laat leeg om over te slaan. Vul een 'stekker erin'-entiteit van je auto in (bv. een binary_sensor uit de eigen HA-integratie van je auto) als je wilt dat de evcc-statussensor 'B' (verbonden, nog niet ladend) kan tonen in plaats van alleen 'A'/'C'. Geaccepteerde statussen: on, true, 1, connected, plugged_in of yes (hoofdletterongevoelig); elke binary_sensor/switch/input_boolean of gewone sensor met zo'n status werkt. Zonder deze blijft de status op 'A' staan totdat er een sessie start.",
+          "car_max_current_entity": "Optioneel — laat leeg om over te slaan. Vul een number- of input_number-entiteit van je auto in (bv. uit de eigen HA-integratie van je auto) die de laadstroom écht begrenst, als je wilt dat de door evcc gevraagde maximale stroom daadwerkelijk bij de auto terechtkomt — niet alleen lokaal wordt opgeslagen. Moet number.set_value / input_number.set_value in ampère accepteren; min/max/stap worden bij opstarten overgenomen. Zonder deze blijft number.cube_charger_max_current wel bestaan (verplicht voor evcc), maar heeft wijzigen geen echt effect.",
+          "webhook_secret": "Optioneel, maar sterk aanbevolen zodra je 'm hebt gevonden. Elke Cube-webhookaanroep bevat een 'X-CubeSignature'-header (HMAC-SHA256 over de ruwe payload). Vul hier het bijbehorende secret in zodat inkomende events geverifieerd worden — zonder secret worden events nog wel verwerkt (de webhook-URL zelf is al lastig te raden), maar kan iedereen die de URL kent in theorie valse status- of energie-events sturen."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbinding maken mislukt",
+      "invalid_auth": "Ongeldige authenticatie",
+      "unknown": "Onverwachte fout"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "connector_id": "Connector-ID",
+          "idtag_mapping": "idTag→auto mapping (kommagescheiden)",
+          "energy_unit_active": "Eenheid actieve sessie-energie",
+          "poll_interval": "Poll-interval (seconden)",
+          "request_timeout": "Timeout voor verzoeken (seconden)",
+          "verify_ssl": "SSL controleren",
+          "car_connected_entity": "Auto stekker-sensor (optioneel)",
+          "car_max_current_entity": "Auto max-stroom-regeling (optioneel)",
+          "webhook_secret": "Webhook secret (optioneel)"
+        },
+        "data_description": {
+          "car_connected_entity": "Optioneel — laat leeg om over te slaan. Vul een 'stekker erin'-entiteit van je auto in (bv. een binary_sensor uit de eigen HA-integratie van je auto) als je wilt dat de evcc-statussensor 'B' (verbonden, nog niet ladend) kan tonen in plaats van alleen 'A'/'C'. Geaccepteerde statussen: on, true, 1, connected, plugged_in of yes (hoofdletterongevoelig); elke binary_sensor/switch/input_boolean of gewone sensor met zo'n status werkt. Zonder deze blijft de status op 'A' staan totdat er een sessie start.",
+          "car_max_current_entity": "Optioneel — laat leeg om over te slaan. Vul een number- of input_number-entiteit van je auto in (bv. uit de eigen HA-integratie van je auto) die de laadstroom écht begrenst, als je wilt dat de door evcc gevraagde maximale stroom daadwerkelijk bij de auto terechtkomt — niet alleen lokaal wordt opgeslagen. Moet number.set_value / input_number.set_value in ampère accepteren; min/max/stap worden bij opstarten overgenomen. Zonder deze blijft number.cube_charger_max_current wel bestaan (verplicht voor evcc), maar heeft wijzigen geen echt effect.",
+          "webhook_secret": "Optioneel, maar sterk aanbevolen zodra je 'm hebt gevonden. Elke Cube-webhookaanroep bevat een 'X-CubeSignature'-header (HMAC-SHA256 over de ruwe payload). Vul hier het bijbehorende secret in zodat inkomende events geverifieerd worden — zonder secret worden events nog wel verwerkt (de webhook-URL zelf is al lastig te raden), maar kan iedereen die de URL kent in theorie valse status- of energie-events sturen."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "cube_charger_status": {
+        "name": "Status"
+      }
+    },
+    "select": {
+      "cube_charger_idtag_select": {
+        "name": "idTag"
       }
     }
   }

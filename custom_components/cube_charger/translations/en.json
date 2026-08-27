@@ -4,14 +4,24 @@
     "step": {
       "user": {
         "title": "Configure Cube Charger",
-        "description": "Enter portal URL, Bearer token and idTag\u2192car mapping. Example: RFID_VW:VW, RFID_PEU:Peugeot",
+        "description": "Enter portal URL, Bearer token and idTag→car mapping. Example: RFID_VW:VW, RFID_PEU:Peugeot",
         "data": {
           "base_url": "Base URL",
           "bearer_token": "Bearer token",
-          "verify_ssl": "Verify SSL",
+          "connector_id": "Connector ID",
+          "idtag_mapping": "idTag→car mapping (comma-separated)",
+          "energy_unit_active": "Active-session energy unit",
           "poll_interval": "Poll interval (seconds)",
           "request_timeout": "Request timeout (seconds)",
-          "idtag_mapping": "idTag\u2192car mapping (comma-separated)"
+          "verify_ssl": "Verify SSL",
+          "car_connected_entity": "Car plugged-in sensor (optional)",
+          "car_max_current_entity": "Car max-current control (optional)",
+          "webhook_secret": "Webhook secret (optional)"
+        },
+        "data_description": {
+          "car_connected_entity": "Optional — leave empty to skip. Fill in a car-side \"plugged in\" entity (e.g. a binary_sensor from your car's own HA integration) if you want the evcc status sensor to report 'B' (connected, not charging) instead of only 'A'/'C'. Accepted states: on, true, 1, connected, plugged_in or yes (case-insensitive); any binary_sensor/switch/input_boolean or plain sensor with one of those states works. Without it, status stays 'A' until a session starts.",
+          "car_max_current_entity": "Optional — leave empty to skip. Fill in a car-side number or input_number entity (e.g. from your car's own HA integration) that actually limits charging current, if you want evcc's requested max current to really be applied to the car — not just stored locally. Must accept number.set_value / input_number.set_value calls in amperes; its min/max/step are copied over at startup. Without it, number.cube_charger_max_current still exists (evcc requires it) but changes have no real effect.",
+          "webhook_secret": "Optional, but strongly recommended once you've found it. Every Cube webhook call includes an X-CubeSignature header (HMAC-SHA256 over the raw payload). Set the matching secret here so incoming events get verified — without it, events are still processed (the webhook URL itself is already hard to guess), but anyone who learns the URL could in theory send fake status/energy events."
         }
       }
     },
@@ -19,6 +29,28 @@
       "cannot_connect": "Failed to connect",
       "invalid_auth": "Invalid authentication",
       "unknown": "Unexpected error"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "connector_id": "Connector ID",
+          "idtag_mapping": "idTag→car mapping (comma-separated)",
+          "energy_unit_active": "Active-session energy unit",
+          "poll_interval": "Poll interval (seconds)",
+          "request_timeout": "Request timeout (seconds)",
+          "verify_ssl": "Verify SSL",
+          "car_connected_entity": "Car plugged-in sensor (optional)",
+          "car_max_current_entity": "Car max-current control (optional)",
+          "webhook_secret": "Webhook secret (optional)"
+        },
+        "data_description": {
+          "car_connected_entity": "Optional — leave empty to skip. Fill in a car-side \"plugged in\" entity (e.g. a binary_sensor from your car's own HA integration) if you want the evcc status sensor to report 'B' (connected, not charging) instead of only 'A'/'C'. Accepted states: on, true, 1, connected, plugged_in or yes (case-insensitive); any binary_sensor/switch/input_boolean or plain sensor with one of those states works. Without it, status stays 'A' until a session starts.",
+          "car_max_current_entity": "Optional — leave empty to skip. Fill in a car-side number or input_number entity (e.g. from your car's own HA integration) that actually limits charging current, if you want evcc's requested max current to really be applied to the car — not just stored locally. Must accept number.set_value / input_number.set_value calls in amperes; its min/max/step are copied over at startup. Without it, number.cube_charger_max_current still exists (evcc requires it) but changes have no real effect.",
+          "webhook_secret": "Optional, but strongly recommended once you've found it. Every Cube webhook call includes an X-CubeSignature header (HMAC-SHA256 over the raw payload). Set the matching secret here so incoming events get verified — without it, events are still processed (the webhook URL itself is already hard to guess), but anyone who learns the URL could in theory send fake status/energy events."
+        }
+      }
     }
   },
   "entity": {
