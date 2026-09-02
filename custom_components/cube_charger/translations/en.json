@@ -16,12 +16,12 @@
           "verify_ssl": "Verify SSL",
           "car_connected_entity": "Car plugged-in sensor (optional)",
           "car_max_current_entity": "Car max-current control (optional)",
-          "webhook_secret": "Webhook secret (auto-generated)"
+          "webhook_secret": "Webhook secret (optional, not recommended currently)"
         },
         "data_description": {
           "car_connected_entity": "Optional — leave empty to skip. Fill in a car-side \"plugged in\" entity (e.g. a binary_sensor from your car's own HA integration) if you want the evcc status sensor to report 'B' (connected, not charging) - even when Cube's own status still says 'A'. Accepted states (case-insensitive): on, true, 1, yes, connected, plugged_in/plugged in, and the Dutch verbonden, aangesloten, ingeplugd, gekoppeld; any binary_sensor/switch/input_boolean or plain sensor with one of those states works. If your value isn't in that list, check it via Developer Tools → States and report it (issue/PR).",
           "car_max_current_entity": "Optional — leave empty to skip. Fill in a car-side number or input_number entity (e.g. from your car's own HA integration) that actually limits charging current, if you want evcc's requested max current to really be applied to the car — not just stored locally. Must accept number.set_value / input_number.set_value calls in amperes; its min/max/step are copied over at startup. Without it, number.cube_charger_max_current still exists (evcc requires it) but changes have no real effect.",
-          "webhook_secret": "Auto-generated on first setup and embedded directly in the webhook subscription example - no manual step needed. Every Cube webhook call includes an X-CubeSignature header (HMAC-SHA256 over the raw payload), checked against this value; a missing or wrong signature is rejected (HTTP 401). Change it here only if you want to bring your own value instead."
+          "webhook_secret": "Optional — leave empty (the default). Cube's subscription API accepts a `secret` in the POST/PUT body but real-world testing found it doesn't actually sign subsequent event deliveries with it, so enabling this can silently block all real webhook events (not just forged ones). Only set it if you've independently confirmed, for your own subscription, that Cube signs events with this exact value — check the log for \"invalid or missing X-CubeSignature\" after setting it, and clear this field again immediately if you see it."
         }
       }
     },
@@ -43,12 +43,12 @@
           "verify_ssl": "Verify SSL",
           "car_connected_entity": "Car plugged-in sensor (optional)",
           "car_max_current_entity": "Car max-current control (optional)",
-          "webhook_secret": "Webhook secret (auto-generated)"
+          "webhook_secret": "Webhook secret (optional, not recommended currently)"
         },
         "data_description": {
           "car_connected_entity": "Optional — leave empty to skip. Fill in a car-side \"plugged in\" entity (e.g. a binary_sensor from your car's own HA integration) if you want the evcc status sensor to report 'B' (connected, not charging) - even when Cube's own status still says 'A'. Accepted states (case-insensitive): on, true, 1, yes, connected, plugged_in/plugged in, and the Dutch verbonden, aangesloten, ingeplugd, gekoppeld; any binary_sensor/switch/input_boolean or plain sensor with one of those states works. If your value isn't in that list, check it via Developer Tools → States and report it (issue/PR).",
           "car_max_current_entity": "Optional — leave empty to skip. Fill in a car-side number or input_number entity (e.g. from your car's own HA integration) that actually limits charging current, if you want evcc's requested max current to really be applied to the car — not just stored locally. Must accept number.set_value / input_number.set_value calls in amperes; its min/max/step are copied over at startup. Without it, number.cube_charger_max_current still exists (evcc requires it) but changes have no real effect.",
-          "webhook_secret": "Auto-generated on first setup and embedded directly in the webhook subscription example - no manual step needed. Every Cube webhook call includes an X-CubeSignature header (HMAC-SHA256 over the raw payload), checked against this value; a missing or wrong signature is rejected (HTTP 401). Change it here only if you want to bring your own value instead."
+          "webhook_secret": "Optional — leave empty (the default). Cube's subscription API accepts a `secret` in the POST/PUT body but real-world testing found it doesn't actually sign subsequent event deliveries with it, so enabling this can silently block all real webhook events (not just forged ones). Only set it if you've independently confirmed, for your own subscription, that Cube signs events with this exact value — check the log for \"invalid or missing X-CubeSignature\" after setting it, and clear this field again immediately if you see it."
         }
       }
     }

@@ -5,7 +5,6 @@ import hashlib
 import hmac
 import json
 import logging
-import secrets
 from datetime import datetime, timedelta, timezone
 from aiohttp import web
 from homeassistant.core import HomeAssistant
@@ -186,16 +185,14 @@ async def _accumulate_webhook_session(hass: HomeAssistant, entry_id: str, car: s
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     get = lambda key, default=None: entry.options.get(key, entry.data.get(key, default))
 
+    # NOT auto-generated (reverted from 0.11.0): a real subscription's `secret`
+    # was set via PUT and accepted (200, updatedAt changed) but Cube never
+    # actually signed subsequent events with it - real webhook deliveries kept
+    # arriving unsigned and were rejected once enforcement was on by default,
+    # silently breaking real-time updates for everyone. Verification is opt-in
+    # again: only enforced if the user explicitly sets webhook_secret AND has
+    # confirmed Cube actually honors it for their subscription.
     webhook_secret = get("webhook_secret", "") or None
-    if not webhook_secret:
-        # Auto-generate once per entry so verification works out of the box -
-        # embedded directly in the subscription curl example below, so the
-        # user never has to invent or copy a secret by hand. Persisted into
-        # entry.data (before the update listener is registered further down,
-        # so this doesn't trigger a reload) so it survives restarts and shows
-        # up pre-filled in the options flow if they ever want to see/change it.
-        webhook_secret = secrets.token_urlsafe(24)
-        hass.config_entries.async_update_entry(entry, data={**entry.data, "webhook_secret": webhook_secret})
 
     api = CubeApi(
         get("base_url", "https://portal.cubecharging.com"),
@@ -267,15 +264,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     webhook_url = webhook.async_generate_url(hass, webhook_id)
     chargebox_id = box.get("chargeBoxId", "YOUR_CHARGEBOX_ID")
+    secret_line = f',\n    "secret": "{webhook_secret}"' if webhook_secret else ""
     async_create_notification(
         hass,
         (
             "Register this URL as a Cube Charging webhook subscription to get near-instant "
             "status updates instead of waiting for the next poll:\n\n"
             f"`{webhook_url}`\n\n"
-            "Example (run yourself, replace YOUR_API_KEY) - this already "
-            "includes an auto-generated `secret`, so signature verification "
-            "works immediately, no extra step needed:\n\n"
+            "Example (run yourself, replace YOUR_API_KEY):\n\n"
             "```\n"
             f'curl -X POST "{get("base_url", "https://portal.cubecharging.com")}/api/v1/CubeCharging/webhook/subscription" \\\n'
             '  -H "Authorization: Bearer YOUR_API_KEY" \\\n'
@@ -283,21 +279,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "  -d '{\n"
             f'    "targetUrl": "{webhook_url}",\n'
             '    "events": ["Session_started", "Session_stopped", "Status_changed", "Session_progress"],\n'
-            f'    "chargeBoxIds": ["{chargebox_id}"],\n'
-            f'    "secret": "{webhook_secret}"\n'
+            f'    "chargeBoxIds": ["{chargebox_id}"]{secret_line}\n'
             "  }'\n"
             "```\n\n"
-            "If you already created a subscription without a secret, `PUT` "
-            "to `.../webhook/subscription/{id}` with the same body (including "
-            f'`"secret": "{webhook_secret}"`) to add it retroactively — '
-            "posting the example above again would create a duplicate "
-            "subscription instead of updating the existing one.\n\n"
-            "Events are parsed for real-time status, session energy and "
-            "instant total-energy updates. Every request includes an "
-            "`X-CubeSignature` HMAC header, checked against this generated "
-            "secret (visible/changeable under `webhook_secret` in this "
-            "integration's options) - requests with a missing or wrong "
-            "signature are rejected (HTTP 401)."
+            "Events are parsed for real-time status, session energy and instant "
+            "total-energy updates.\n\n"
+            "**About `webhook_secret` / signature verification:** testing has shown "
+            "Cube's subscription API accepts a `secret` in the POST/PUT body (HTTP 200, "
+            "`updatedAt` changes) but does not actually sign subsequent event deliveries "
+            "with it - real events kept arriving without a valid `X-CubeSignature` and "
+            "were rejected once verification was enforced. Because of that, "
+            "`webhook_secret` is opt-in and unenforced by default: only set it in this "
+            "integration's options if you've independently confirmed Cube signs your "
+            "events with that exact value (check the log for `invalid or missing "
+            "X-CubeSignature` after setting it - if you see that, clear the option again "
+            "immediately, since it silently blocks all real events, not just forged ones)."
         ),
         title="Cube Charger: webhook available",
         notification_id=f"{DOMAIN}_webhook_{entry.entry_id}",

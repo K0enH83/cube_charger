@@ -66,7 +66,7 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
    - **Verify SSL**
    - **car_connected_entity** *(optional, recommended)* - entity ID of a car-side "plugged in" sensor (e.g. `binary_sensor.myauto_plugged_in`); upgrades evcc status `A` to `B` when Cube's own status doesn't reflect it being plugged in
    - **car_max_current_entity** *(optional)* - entity ID of a car-side `number`/`input_number` that actually controls charging current (e.g. `number.myauto_charging_amps`); every value evcc sets is forwarded to it
-   - **webhook_secret** *(auto-generated, rarely needs manual input)* - verifies the `X-CubeSignature` header on incoming webhook events; see [Webhook support](#-webhook-support)
+   - **webhook_secret** *(optional, not recommended currently — see [Webhook support](#-webhook-support))* - verifies the `X-CubeSignature` header on incoming webhook events, but only if you've independently confirmed Cube actually signs your subscription's events with it
 3. Submit. The integration will connect and create entities right away, grouped under a single **Cube Charger** device that you can assign to an area/room (Settings → Devices & Services → Cube Charger → the device page has an **Area** picker).
 
 ---
@@ -207,19 +207,22 @@ Assistant for this). If you have Home Assistant Cloud (Nabu Casa), that URL
 is already publicly reachable with no extra setup. Without a subscription,
 everything falls back to the polling-only behavior described above.
 
-**Security — `webhook_secret`:** every webhook request carries an
-`X-CubeSignature` header (Base64 HMAC-SHA256 of the raw body). Since this
-integration trusts webhook content for real state (status, session energy,
-totals), a random secret is auto-generated per config entry the first time
-it's set up, embedded directly in the notification's example `curl` command
-(as the subscription's `secret` field), and used to verify that header —
-requests with a missing or wrong signature are rejected (HTTP 401). No
-manual step is needed for a fresh setup. It's visible/changeable under
-`webhook_secret` in the integration's options if you'd rather set your own.
-If you already created a subscription before upgrading (so it has no
-secret), the notification also includes a `PUT` command to add the
-generated secret to that existing subscription (posting the `POST` example
-again would create a duplicate instead).
+**Security — `webhook_secret` (currently unreliable, opt-in only):** every
+webhook request carries an `X-CubeSignature` header (Base64 HMAC-SHA256 of
+the raw body), which `webhook_secret` can verify. Earlier versions
+auto-generated one and enforced it by default; that's been reverted after
+real-world testing showed Cube's `webhook/subscription` API accepts a
+`secret` in the `POST`/`PUT` body (200 OK, `updatedAt` changes) but doesn't
+actually sign subsequent event deliveries with it — real events kept
+arriving unsigned and were silently rejected the moment enforcement was on,
+breaking real-time updates entirely. So for now: **leave `webhook_secret`
+empty** (the default). Only set it if you've independently confirmed, for
+your own subscription, that Cube signs events with that exact value — and
+if you ever see `invalid or missing X-CubeSignature` in the log after
+setting it, clear the option immediately, since it blocks *all* real events
+while it's misconfigured, not just forged ones. Without a secret set,
+events are still processed (the webhook URL itself is still an unguessable
+secret) with no verification.
 
 Not-yet-confirmed: a flatter `Status_progress` event (with `currentEnergy` in
 kWh) has turned up in some docs but wasn't in the advertised subscribable
