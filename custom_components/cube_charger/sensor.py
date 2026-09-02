@@ -4,6 +4,7 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.const import UnitOfElectricCurrent, UnitOfEnergy
@@ -132,6 +133,25 @@ class CubeChargerStatusSensor(CoordinatorEntity[CubeTransactionsCoordinator], Se
         self.car_connected_entity = car_connected_entity
         self._attr_name = "Cube Charger Status"
         self._attr_unique_id = f"{DOMAIN}_{entry_id}_evcc_status"
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        # native_value/extra_state_attributes always read car_connected_entity's
+        # current state live, but without this, changes to it would only show up
+        # whenever the coordinator next happens to refresh (up to poll_interval
+        # away) instead of immediately. Track it directly so a plug/unplug is
+        # reflected right away, and so the very first render after setup already
+        # accounts for it (matters most when it's the only available status source).
+        if self.car_connected_entity:
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass, [self.car_connected_entity], self._handle_car_connected_change
+                )
+            )
+
+    @callback
+    def _handle_car_connected_change(self, event) -> None:
+        self.async_write_ha_state()
 
     def _is_car_connected(self) -> bool:
         if not self.car_connected_entity:
