@@ -16,12 +16,12 @@
           "verify_ssl": "SSL controleren",
           "car_connected_entity": "Auto stekker-sensor (optioneel)",
           "car_max_current_entity": "Auto max-stroom-regeling (optioneel)",
-          "webhook_secret": "Webhook secret (optioneel)"
+          "webhook_secret": "Webhook secret (automatisch gegenereerd)"
         },
         "data_description": {
           "car_connected_entity": "Optioneel — laat leeg om over te slaan. Vul een 'stekker erin'-entiteit van je auto in (bv. een binary_sensor uit de eigen HA-integratie van je auto) als je wilt dat de evcc-statussensor 'B' (verbonden, nog niet ladend) kan tonen, ook als Cube's eigen status 'A' blijft melden. Geaccepteerde statussen (hoofdletterongevoelig): on, true, 1, yes, connected, plugged_in/plugged in, en de Nederlandse varianten verbonden, aangesloten, ingeplugd, gekoppeld; elke binary_sensor/switch/input_boolean of gewone sensor met zo'n status werkt. Staat jouw waarde er niet bij? Check 'm via Ontwikkelhulpmiddelen → Status en meld het (issue/PR).",
           "car_max_current_entity": "Optioneel — laat leeg om over te slaan. Vul een number- of input_number-entiteit van je auto in (bv. uit de eigen HA-integratie van je auto) die de laadstroom écht begrenst, als je wilt dat de door evcc gevraagde maximale stroom daadwerkelijk bij de auto terechtkomt — niet alleen lokaal wordt opgeslagen. Moet number.set_value / input_number.set_value in ampère accepteren; min/max/stap worden bij opstarten overgenomen. Zonder deze blijft number.cube_charger_max_current wel bestaan (verplicht voor evcc), maar heeft wijzigen geen echt effect.",
-          "webhook_secret": "Optioneel, maar sterk aanbevolen zodra je 'm hebt gevonden. Elke Cube-webhookaanroep bevat een 'X-CubeSignature'-header (HMAC-SHA256 over de ruwe payload). Vul hier het bijbehorende secret in zodat inkomende events geverifieerd worden — zonder secret worden events nog wel verwerkt (de webhook-URL zelf is al lastig te raden), maar kan iedereen die de URL kent in theorie valse status- of energie-events sturen."
+          "webhook_secret": "Wordt automatisch gegenereerd bij de eerste installatie en direct verwerkt in het voorbeeld-commando voor de webhook-subscription — geen handmatige stap nodig. Elke Cube-webhookaanroep bevat een 'X-CubeSignature'-header (HMAC-SHA256 over de ruwe payload), die hiertegen wordt gecontroleerd; een ontbrekende of foute signature wordt geweigerd (HTTP 401). Pas dit alleen aan als je liever je eigen waarde gebruikt."
         }
       }
     },
@@ -43,12 +43,12 @@
           "verify_ssl": "SSL controleren",
           "car_connected_entity": "Auto stekker-sensor (optioneel)",
           "car_max_current_entity": "Auto max-stroom-regeling (optioneel)",
-          "webhook_secret": "Webhook secret (optioneel)"
+          "webhook_secret": "Webhook secret (automatisch gegenereerd)"
         },
         "data_description": {
           "car_connected_entity": "Optioneel — laat leeg om over te slaan. Vul een 'stekker erin'-entiteit van je auto in (bv. een binary_sensor uit de eigen HA-integratie van je auto) als je wilt dat de evcc-statussensor 'B' (verbonden, nog niet ladend) kan tonen, ook als Cube's eigen status 'A' blijft melden. Geaccepteerde statussen (hoofdletterongevoelig): on, true, 1, yes, connected, plugged_in/plugged in, en de Nederlandse varianten verbonden, aangesloten, ingeplugd, gekoppeld; elke binary_sensor/switch/input_boolean of gewone sensor met zo'n status werkt. Staat jouw waarde er niet bij? Check 'm via Ontwikkelhulpmiddelen → Status en meld het (issue/PR).",
           "car_max_current_entity": "Optioneel — laat leeg om over te slaan. Vul een number- of input_number-entiteit van je auto in (bv. uit de eigen HA-integratie van je auto) die de laadstroom écht begrenst, als je wilt dat de door evcc gevraagde maximale stroom daadwerkelijk bij de auto terechtkomt — niet alleen lokaal wordt opgeslagen. Moet number.set_value / input_number.set_value in ampère accepteren; min/max/stap worden bij opstarten overgenomen. Zonder deze blijft number.cube_charger_max_current wel bestaan (verplicht voor evcc), maar heeft wijzigen geen echt effect.",
-          "webhook_secret": "Optioneel, maar sterk aanbevolen zodra je 'm hebt gevonden. Elke Cube-webhookaanroep bevat een 'X-CubeSignature'-header (HMAC-SHA256 over de ruwe payload). Vul hier het bijbehorende secret in zodat inkomende events geverifieerd worden — zonder secret worden events nog wel verwerkt (de webhook-URL zelf is al lastig te raden), maar kan iedereen die de URL kent in theorie valse status- of energie-events sturen."
+          "webhook_secret": "Wordt automatisch gegenereerd bij de eerste installatie en direct verwerkt in het voorbeeld-commando voor de webhook-subscription — geen handmatige stap nodig. Elke Cube-webhookaanroep bevat een 'X-CubeSignature'-header (HMAC-SHA256 over de ruwe payload), die hiertegen wordt gecontroleerd; een ontbrekende of foute signature wordt geweigerd (HTTP 401). Pas dit alleen aan als je liever je eigen waarde gebruikt."
         }
       }
     }

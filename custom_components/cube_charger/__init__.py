@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import logging
+import secrets
 from datetime import datetime, timedelta, timezone
 from aiohttp import web
 from homeassistant.core import HomeAssistant
@@ -73,7 +74,8 @@ async def _handle_webhook(hass: HomeAssistant, webhook_id: str, request: web.Req
       - Session_started: chargeBoxId, connectorId, transactionId, idTag, meterStart (Wh), timestamp
       - Status_changed: chargeBoxId, connectorId, transactionId, status (OCPP ChargePointStatus), errorCode, timestamp
       - Session_progress: chargeBoxId, connectorId, transactionId, meterValue[].sampledValue[]
-        (OCPP 1.6 MeterValues; the entry without a `measurand` is Energy.Active.Import.Register in Wh)
+        (OCPP 1.6 MeterValues; the entry without a `measurand` is Energy.Active.Import.Register in Wh;
+        `Current.Import` is real measured current in A, `Current.Offered` the offered limit in A)
       - Session_stopped: chargeBoxId, connectorId, transactionId, idTag, meterStop (Wh), reason, timestamp
     `Status_progress` (flatter shape with `currentEnergy` in kWh) has also been seen in docs but wasn't in
     the advertised subscribable event list, so it's handled defensively rather than assumed reliable.
@@ -134,7 +136,9 @@ async def _handle_webhook(hass: HomeAssistant, webhook_id: str, request: web.Req
                         if measurand is None:
                             state["latest_meter_wh"] = value
                         elif measurand == "Current.Offered":
-                            state["latest_current_a"] = value
+                            state["offered_current_a"] = value
+                        elif measurand == "Current.Import":
+                            state["measured_current_a"] = value
             elif event_type == "Status_progress":
                 # Defensive/legacy-compat handling only - see docstring.
                 current_energy_kwh = _to_float(payload.get("currentEnergy"))
@@ -181,6 +185,17 @@ async def _accumulate_webhook_session(hass: HomeAssistant, entry_id: str, car: s
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     get = lambda key, default=None: entry.options.get(key, entry.data.get(key, default))
+
+    webhook_secret = get("webhook_secret", "") or None
+    if not webhook_secret:
+        # Auto-generate once per entry so verification works out of the box -
+        # embedded directly in the subscription curl example below, so the
+        # user never has to invent or copy a secret by hand. Persisted into
+        # entry.data (before the update listener is registered further down,
+        # so this doesn't trigger a reload) so it survives restarts and shows
+        # up pre-filled in the options flow if they ever want to see/change it.
+        webhook_secret = secrets.token_urlsafe(24)
+        hass.config_entries.async_update_entry(entry, data={**entry.data, "webhook_secret": webhook_secret})
 
     api = CubeApi(
         get("base_url", "https://portal.cubecharging.com"),
@@ -230,7 +245,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "energy_unit_active": get("energy_unit_active", "kWh"),
         "car_connected_entity": get("car_connected_entity", "") or None,
         "car_max_current_entity": get("car_max_current_entity", "") or None,
-        "webhook_secret": get("webhook_secret", "") or None,
+        "webhook_secret": webhook_secret,
         "webhook_state": {
             "status": None,
             "error_code": None,
@@ -238,7 +253,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "idtag": None,
             "meter_start_wh": None,
             "latest_meter_wh": None,
-            "latest_current_a": None,
+            "offered_current_a": None,
+            "measured_current_a": None,
         },
         "device_info": device_info,
         "store": store,
@@ -257,7 +273,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "Register this URL as a Cube Charging webhook subscription to get near-instant "
             "status updates instead of waiting for the next poll:\n\n"
             f"`{webhook_url}`\n\n"
-            "Example (run yourself, replace YOUR_API_KEY):\n\n"
+            "Example (run yourself, replace YOUR_API_KEY) - this already "
+            "includes an auto-generated `secret`, so signature verification "
+            "works immediately, no extra step needed:\n\n"
             "```\n"
             f'curl -X POST "{get("base_url", "https://portal.cubecharging.com")}/api/v1/CubeCharging/webhook/subscription" \\\n'
             '  -H "Authorization: Bearer YOUR_API_KEY" \\\n'
@@ -265,15 +283,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "  -d '{\n"
             f'    "targetUrl": "{webhook_url}",\n'
             '    "events": ["Session_started", "Session_stopped", "Status_changed", "Session_progress"],\n'
-            f'    "chargeBoxIds": ["{chargebox_id}"]\n'
+            f'    "chargeBoxIds": ["{chargebox_id}"],\n'
+            f'    "secret": "{webhook_secret}"\n'
             "  }'\n"
             "```\n\n"
-            "Events are parsed for real-time status, session energy and instant "
-            "total-energy updates. Every request includes an `X-CubeSignature` "
-            "HMAC header - set `webhook_secret` in this integration's options "
-            "once you've located it in the Cube portal, so requests can be "
-            "cryptographically verified (without it, anyone with this URL could "
-            "inject fake status/energy events)."
+            "If you already created a subscription without a secret, `PUT` "
+            "to `.../webhook/subscription/{id}` with the same body (including "
+            f'`"secret": "{webhook_secret}"`) to add it retroactively — '
+            "posting the example above again would create a duplicate "
+            "subscription instead of updating the existing one.\n\n"
+            "Events are parsed for real-time status, session energy and "
+            "instant total-energy updates. Every request includes an "
+            "`X-CubeSignature` HMAC header, checked against this generated "
+            "secret (visible/changeable under `webhook_secret` in this "
+            "integration's options) - requests with a missing or wrong "
+            "signature are rejected (HTTP 401)."
         ),
         title="Cube Charger: webhook available",
         notification_id=f"{DOMAIN}_webhook_{entry.entry_id}",

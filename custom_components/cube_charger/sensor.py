@@ -235,7 +235,36 @@ class CubeChargerOfferedCurrentSensor(CoordinatorEntity[CubeTransactionsCoordina
 
     @property
     def native_value(self) -> float | None:
-        return self.hass.data[DOMAIN][self.entry_id]["webhook_state"].get("latest_current_a")
+        return self.hass.data[DOMAIN][self.entry_id]["webhook_state"].get("offered_current_a")
+
+
+class CubeChargerMeasuredCurrentSensor(CoordinatorEntity[CubeTransactionsCoordinator], SensorEntity):
+    """Actual measured charging current (A), from a webhook `Session_progress` event.
+
+    This is the OCPP `Current.Import` measurand - real measured current draw,
+    unlike `Current.Offered` (the offered limit). Confirmed from a real
+    charging session, so unlike the vendorId values this isn't experimental.
+    No `phase` was present on the sampled value in the confirmed example, so
+    this may be a single-phase reading or an aggregate - not yet confirmed
+    to be per-phase, so it isn't wired into evcc's currentL1/L2/L3 (which
+    expect one value per phase) without further verification on a 3-phase
+    setup. Only populated if a webhook subscription is set up.
+    """
+
+    _attr_device_class = "current"
+    _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
+    _attr_icon = "mdi:current-ac"
+
+    def __init__(self, hass: HomeAssistant, entry_id: str, coordinator: CubeTransactionsCoordinator):
+        super().__init__(coordinator)
+        self.hass = hass
+        self.entry_id = entry_id
+        self._attr_name = "Cube Charger Current"
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_measured_current"
+
+    @property
+    def native_value(self) -> float | None:
+        return self.hass.data[DOMAIN][self.entry_id]["webhook_state"].get("measured_current_a")
 
 
 class CubeChargerVendorValueSensor(CoordinatorEntity[CubeTransactionsCoordinator], SensorEntity):
@@ -379,6 +408,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     # evcc-compatible status + overall energy total
     entities.append(CubeChargerStatusSensor(hass, entry.entry_id, tx_coord, data["connector_id"], data["car_connected_entity"]))
     entities.append(CubeChargerOfferedCurrentSensor(hass, entry.entry_id, tx_coord))
+    entities.append(CubeChargerMeasuredCurrentSensor(hass, entry.entry_id, tx_coord))
     for i in range(3):
         entities.append(CubeChargerVendorValueSensor(hass, entry.entry_id, tx_coord, data["connector_id"], i))
     entities.append(CubeChargerTotalEnergySensor(hass, entry.entry_id))

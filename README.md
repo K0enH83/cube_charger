@@ -20,10 +20,10 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 - kWh history aggregation per car (idTag)
 
 **Roadmap (next iterations):**
+- Live power (W): now that real current (`Current.Import`) is confirmed, an estimated-power sensor (current × an assumed voltage) is feasible - not added yet since it'd be an approximation, not a real measurement
+- Confirm whether `Current.Import` is ever reported per-phase (with a `phase` field) so it could feed evcc's `currentL1/L2/L3` directly - only a single, phase-less reading has been confirmed so far
 - Confirm the meaning/unit/scaling of `chargebox/status`'s `vendorId`-encoded values (see below) from a real charging session, then give them a proper name/unit/device_class
-- Live power (W) reading in Watts (nothing so far has confirmed real wattage - only offered-current, cumulative Wh, and the unconfirmed vendorId values)
 - Confirm whether `Status_progress` is a real, current webhook event or stale docs
-- Document where the Cube portal surfaces the webhook HMAC secret
 
 ---
 
@@ -66,7 +66,7 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
    - **Verify SSL**
    - **car_connected_entity** *(optional, recommended)* - entity ID of a car-side "plugged in" sensor (e.g. `binary_sensor.myauto_plugged_in`); upgrades evcc status `A` to `B` when Cube's own status doesn't reflect it being plugged in
    - **car_max_current_entity** *(optional)* - entity ID of a car-side `number`/`input_number` that actually controls charging current (e.g. `number.myauto_charging_amps`); every value evcc sets is forwarded to it
-   - **webhook_secret** *(optional, recommended once found)* - verifies the `X-CubeSignature` header on incoming webhook events; see [Webhook support](#-webhook-support)
+   - **webhook_secret** *(auto-generated, rarely needs manual input)* - verifies the `X-CubeSignature` header on incoming webhook events; see [Webhook support](#-webhook-support)
 3. Submit. The integration will connect and create entities right away, grouped under a single **Cube Charger** device that you can assign to an area/room (Settings → Devices & Services → Cube Charger → the device page has an **Area** picker).
 
 ---
@@ -79,7 +79,8 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 | `switch.cube_charger_enable`  | Switch | Starts/stops a charging session on the configured connector  |
 | `number.cube_charger_max_current` | Number | Satisfies evcc's `setMaxCurrent`; forwarded to `car_max_current_entity` if configured, otherwise local-only |
 | `sensor.cube_charger_energy_total` | Sensor | Cumulative synced kWh across all cars/idTags on this charger |
-| `sensor.cube_charger_offered_current` | Sensor | OCPP `Current.Offered` (A) from a webhook `Session_progress` event — informational, not measured draw |
+| `sensor.cube_charger_current` | Sensor | OCPP `Current.Import` (A) — real measured charging current, from a webhook `Session_progress` event |
+| `sensor.cube_charger_offered_current` | Sensor | OCPP `Current.Offered` (A) from a webhook `Session_progress` event — informational, the offered limit, not measured draw |
 | `sensor.cube_charger_vendor_value_1/2/3` | Sensor | **Experimental**, unconfirmed — the 3 trailing numeric groups from the polled `vendorId` field; see [Live status polling](#-live-status-polling-chargeboxstatus) |
 | `select.cube_charger_idtag`   | Select | Choose the active **idTag / car** (placeholder options now) |
 | `sensor.cube_<mappedtag>_active_sessie`  | Sensor | Intended to show the current transaction energy consumption             |
@@ -183,9 +184,10 @@ integration registers a Home Assistant webhook receiver and parses all four:
   feeds the per-car active-session sensor (`sensor.cube_<car>_actieve_sessie`)
   with a real value for the first time — `active_transactions` has no energy
   field at all, so without a webhook subscription this sensor is always 0.
-  `Current.Offered` (A) is exposed as `sensor.cube_charger_offered_current`
-  — informational only (it's the offered limit, not measured draw, so don't
-  wire it into evcc's `currentL1/L2/L3`).
+  `Current.Import` (real measured current, A) is exposed as
+  `sensor.cube_charger_current`; `Current.Offered` (the offered limit, not
+  measured draw) as `sensor.cube_charger_offered_current` — informational
+  only, don't wire it into evcc's `currentL1/L2/L3`.
 - **`Session_started`** / **`Session_stopped`** — track `meterStart`/
   `meterStop` (Wh) to compute the session's energy, and `Session_stopped`
   applies that delta to the car's running total **immediately**
@@ -205,16 +207,19 @@ Assistant for this). If you have Home Assistant Cloud (Nabu Casa), that URL
 is already publicly reachable with no extra setup. Without a subscription,
 everything falls back to the polling-only behavior described above.
 
-**Security — set `webhook_secret`:** every webhook request carries an
+**Security — `webhook_secret`:** every webhook request carries an
 `X-CubeSignature` header (Base64 HMAC-SHA256 of the raw body). Since this
-integration now trusts webhook content for real state (status, session
-energy, totals), set the matching `webhook_secret` in the integration's
-options as soon as you've located it in the Cube portal — requests are then
-cryptographically verified and rejected (HTTP 401) if the signature doesn't
-match. **Without a configured secret, events are still processed** (the
-webhook URL itself is still an unguessable secret), but anyone who obtains
-the URL could in theory inject fake status or energy. If you find where the
-Cube portal surfaces this secret, an issue/PR to document it is welcome.
+integration trusts webhook content for real state (status, session energy,
+totals), a random secret is auto-generated per config entry the first time
+it's set up, embedded directly in the notification's example `curl` command
+(as the subscription's `secret` field), and used to verify that header —
+requests with a missing or wrong signature are rejected (HTTP 401). No
+manual step is needed for a fresh setup. It's visible/changeable under
+`webhook_secret` in the integration's options if you'd rather set your own.
+If you already created a subscription before upgrading (so it has no
+secret), the notification also includes a `PUT` command to add the
+generated secret to that existing subscription (posting the `POST` example
+again would create a duplicate instead).
 
 Not-yet-confirmed: a flatter `Status_progress` event (with `currentEnergy` in
 kWh) has turned up in some docs but wasn't in the advertised subscribable
