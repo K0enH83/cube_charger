@@ -1,5 +1,6 @@
 
 from __future__ import annotations
+import asyncio
 import logging
 from datetime import timedelta
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -43,12 +44,23 @@ class CubeTransactionsCoordinator(DataUpdateCoordinator):
         chargebox_id = cids[0] if cids else None
         if not chargebox_id:
             return {"transactions": [], "connector_status": []}
-        transactions = await self.api.active_transactions(chargebox_id)
-        try:
-            connector_status = await self.api.connector_status(chargebox_id)
-        except Exception:
+
+        # Concurrent, not sequential: two independent HTTP calls run one after
+        # the other would roughly double this coordinator's per-cycle latency,
+        # working against the whole point of sharing a single poll.
+        transactions, connector_status = await asyncio.gather(
+            self.api.active_transactions(chargebox_id),
+            self.api.connector_status(chargebox_id),
+            return_exceptions=True,
+        )
+
+        if isinstance(transactions, BaseException):
+            raise transactions
+
+        if isinstance(connector_status, BaseException):
             # Newer, less-proven endpoint - don't let a hiccup here take down
             # the transactions poll (and everything derived from it) too.
-            _LOGGER.debug("cube_charger: connector_status poll failed", exc_info=True)
+            _LOGGER.debug("cube_charger: connector_status poll failed", exc_info=connector_status)
             connector_status = []
+
         return {"transactions": transactions, "connector_status": connector_status}

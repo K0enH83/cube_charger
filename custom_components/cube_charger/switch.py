@@ -5,7 +5,7 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from . import DOMAIN
+from . import DOMAIN, connector_matches
 from .coordinator import CubeTransactionsCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ class CubeChargerEnableSwitch(CoordinatorEntity[CubeTransactionsCoordinator], Sw
         if self._optimistic is not None:
             return self._optimistic
         txs = (self.coordinator.data or {}).get("transactions") or []
-        return any(t.get("connectorId") == self.connector_id for t in txs)
+        return any(connector_matches(t.get("connectorId"), self.connector_id) for t in txs)
 
     @callback
     def _handle_coordinator_update(self) -> None:

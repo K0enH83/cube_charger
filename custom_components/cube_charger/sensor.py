@@ -8,7 +8,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.const import UnitOfElectricCurrent, UnitOfEnergy
-from . import DOMAIN, map_ocpp_status
+from . import DOMAIN, connector_matches, map_ocpp_status
 from .coordinator import CubeTransactionsCoordinator
 
 class CubeCarTotalEnergySensor(SensorEntity, RestoreEntity):
@@ -91,7 +91,7 @@ _CONNECTED_TRUE_STATES = {
 
 def _find_connector_status(coordinator_data: dict | None, connector_id: int) -> dict | None:
     for c in (coordinator_data or {}).get("connector_status") or []:
-        if c.get("connectorId") == connector_id:
+        if connector_matches(c.get("connectorId"), connector_id):
             return c
     return None
 
@@ -186,7 +186,7 @@ class CubeChargerStatusSensor(CoordinatorEntity[CubeTransactionsCoordinator], Se
                 status = map_ocpp_status(entry["status"])
         if status is None:
             txs = (self.coordinator.data or {}).get("transactions") or []
-            if any(t.get("connectorId") == self.connector_id for t in txs):
+            if any(connector_matches(t.get("connectorId"), self.connector_id) for t in txs):
                 status = "C"
 
         if status in (None, "A") and self._is_car_connected():
@@ -201,12 +201,14 @@ class CubeChargerStatusSensor(CoordinatorEntity[CubeTransactionsCoordinator], Se
             attrs["ocpp_status"] = entry.get("status")
             attrs["ocpp_error_code"] = entry.get("errorCode")
             attrs["ocpp_status_timestamp"] = entry.get("statusTimestamp")
-        # A webhook event is fresher than the last poll, so it wins when present.
+        # A webhook event is fresher than the last poll, so it wins when present -
+        # as a full set, so ocpp_status_timestamp always matches whichever
+        # ocpp_status it's paired with rather than mixing sources.
         webhook_state = self.hass.data[DOMAIN][self.entry_id]["webhook_state"]
         if webhook_state.get("status") is not None:
             attrs["ocpp_status"] = webhook_state["status"]
-        if webhook_state.get("error_code") is not None:
-            attrs["ocpp_error_code"] = webhook_state["error_code"]
+            attrs["ocpp_error_code"] = webhook_state.get("error_code")
+            attrs["ocpp_status_timestamp"] = webhook_state.get("status_timestamp")
         return attrs
 
 

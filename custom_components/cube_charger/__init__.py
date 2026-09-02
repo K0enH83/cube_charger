@@ -46,6 +46,18 @@ def map_ocpp_status(status: str | None) -> str | None:
     return _OCPP_STATUS_TO_EVCC.get(status, "A")
 
 
+def connector_matches(value, connector_id: int) -> bool:
+    """Compare a connectorId from the Cube API against the configured connector_id.
+
+    Cast both to str so a connectorId returned as a string (e.g. "1") still
+    matches an int connector_id (or vice versa) instead of silently never
+    matching.
+    """
+    if value is None:
+        return False
+    return str(value) == str(connector_id)
+
+
 def _to_float(value) -> float | None:
     try:
         return float(value)
@@ -110,7 +122,8 @@ async def _handle_webhook(hass: HomeAssistant, webhook_id: str, request: web.Req
 
     if isinstance(payload, dict):
         connector_id = data["connector_id"]
-        if payload.get("connectorId") in (None, connector_id):
+        payload_connector = payload.get("connectorId")
+        if payload_connector is None or connector_matches(payload_connector, connector_id):
             state = data["webhook_state"]
 
             if event_type == "Session_started":
@@ -121,10 +134,15 @@ async def _handle_webhook(hass: HomeAssistant, webhook_id: str, request: web.Req
                     meter_start_wh=meter_start,
                     latest_meter_wh=meter_start,
                     status="Charging",
+                    # Reset stale current readings from a previous session - the
+                    # first Session_progress of this one will repopulate them.
+                    offered_current_a=None,
+                    measured_current_a=None,
                 )
             elif event_type == "Status_changed":
                 state["status"] = payload.get("status")
                 state["error_code"] = payload.get("errorCode")
+                state["status_timestamp"] = payload.get("timestamp")
             elif event_type == "Session_progress":
                 for mv in payload.get("meterValue") or []:
                     for sv in mv.get("sampledValue") or []:
@@ -158,7 +176,15 @@ async def _handle_webhook(hass: HomeAssistant, webhook_id: str, request: web.Req
                     )
                 if meter_stop is not None:
                     state["latest_meter_wh"] = meter_stop
-                state.update(status="Available", transaction_id=None, idtag=None, meter_start_wh=None)
+                state.update(
+                    status="Available",
+                    transaction_id=None,
+                    idtag=None,
+                    meter_start_wh=None,
+                    # No current flows once the session has stopped.
+                    offered_current_a=None,
+                    measured_current_a=None,
+                )
 
     hass.async_create_task(data["coord"].async_request_refresh())
     hass.async_create_task(data["tx_coord"].async_request_refresh())
@@ -246,6 +272,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "webhook_state": {
             "status": None,
             "error_code": None,
+            "status_timestamp": None,
             "transaction_id": None,
             "idtag": None,
             "meter_start_wh": None,
@@ -264,7 +291,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     webhook_url = webhook.async_generate_url(hass, webhook_id)
     chargebox_id = box.get("chargeBoxId", "YOUR_CHARGEBOX_ID")
-    secret_line = f',\n    "secret": "{webhook_secret}"' if webhook_secret else ""
+    secret_line = f",\n    \"secret\": {json.dumps(webhook_secret)}" if webhook_secret else ""
     async_create_notification(
         hass,
         (
