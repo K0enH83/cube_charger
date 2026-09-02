@@ -81,7 +81,12 @@ class CubeCarActiveEnergySensor(CoordinatorEntity[CubeTransactionsCoordinator], 
                 continue
         return round(value_kwh, 3)
 
-_CONNECTED_TRUE_STATES = {"on", "true", "1", "connected", "plugged_in", "yes"}
+_CONNECTED_TRUE_STATES = {
+    "on", "true", "1", "yes",
+    "connected", "plugged_in", "plugged in",
+    # Dutch: various car integrations (e.g. Volvo) report these as the raw state.
+    "verbonden", "aangesloten", "ingeplugd", "gekoppeld",
+}
 
 
 def _find_connector_status(coordinator_data: dict | None, connector_id: int) -> dict | None:
@@ -116,11 +121,14 @@ def _parse_vendor_groups(vendor_id: str | None) -> list[float] | None:
 class CubeChargerStatusSensor(CoordinatorEntity[CubeTransactionsCoordinator], SensorEntity):
     """evcc-compatible status: 'C' while charging, 'B' while connected, else 'A'.
 
-    Status source priority: a `Status_changed` webhook event (freshest, if a
-    subscription is set up) > the real, always-polled OCPP status from
-    `chargebox/status/{chargeBoxId}` > active-transaction presence +
-    `car_connected_entity` (least accurate, used only if the status endpoint
-    call fails).
+    'C' comes from a `Status_changed` webhook event or the polled OCPP status
+    (`chargebox/status/{chargeBoxId}`), whichever is available - Cube is the
+    only source of truth for "is it actually charging". For 'B', `car_connected_entity`
+    (when configured) is trusted *in addition to* those, not only as a last
+    resort: Cube's own status can report "Available" while a car is plugged
+    in (its OCPP status classification doesn't necessarily match a plain
+    plugged-in check), so `car_connected_entity` can upgrade an otherwise-'A'
+    reading to 'B', but never downgrades a confirmed 'C'.
     """
 
     _attr_icon = "mdi:ev-station"
@@ -171,19 +179,19 @@ class CubeChargerStatusSensor(CoordinatorEntity[CubeTransactionsCoordinator], Se
 
     @property
     def native_value(self) -> str:
-        mapped = map_ocpp_status(self._webhook_status)
-        if mapped is not None:
-            return mapped
-        entry = self._polled_status_entry
-        if entry and entry.get("status"):
-            return map_ocpp_status(entry["status"])
-        txs = (self.coordinator.data or {}).get("transactions") or []
-        charging = any(t.get("connectorId") == self.connector_id for t in txs)
-        if charging:
-            return "C"
-        if self._is_car_connected():
+        status = map_ocpp_status(self._webhook_status)
+        if status is None:
+            entry = self._polled_status_entry
+            if entry and entry.get("status"):
+                status = map_ocpp_status(entry["status"])
+        if status is None:
+            txs = (self.coordinator.data or {}).get("transactions") or []
+            if any(t.get("connectorId") == self.connector_id for t in txs):
+                status = "C"
+
+        if status in (None, "A") and self._is_car_connected():
             return "B"
-        return "A"
+        return status or "A"
 
     @property
     def extra_state_attributes(self) -> dict:

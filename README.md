@@ -64,7 +64,7 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
    - **idtag_mapping** - e.g the mapping of the RFIDS to cards or persons (for example RFID_1=Car1; RFID_2=Persony) -> this to map transactions to a car or person, especially helpfull when using multiple charge cards
    - **Poll interval** (seconds; default 30)
    - **Verify SSL**
-   - **car_connected_entity** *(optional, rarely needed)* - entity ID of a car-side "plugged in" sensor (e.g. `binary_sensor.myauto_plugged_in`); only used as a fallback for evcc status `B` if live status polling and webhooks are both unavailable
+   - **car_connected_entity** *(optional, recommended)* - entity ID of a car-side "plugged in" sensor (e.g. `binary_sensor.myauto_plugged_in`); upgrades evcc status `A` to `B` when Cube's own status doesn't reflect it being plugged in
    - **car_max_current_entity** *(optional)* - entity ID of a car-side `number`/`input_number` that actually controls charging current (e.g. `number.myauto_charging_amps`); every value evcc sets is forwarded to it
    - **webhook_secret** *(optional, recommended once found)* - verifies the `X-CubeSignature` header on incoming webhook events; see [Webhook support](#-webhook-support)
 3. Submit. The integration will connect and create entities right away, grouped under a single **Cube Charger** device that you can assign to an area/room (Settings → Devices & Services → Cube Charger → the device page has an **Area** picker).
@@ -106,25 +106,32 @@ chargers:
     energy: sensor.cube_charger_energy_total
 ```
 
-### Bridging `setMaxCurrent` through your car's own entities
+### Bridging status `B` and `setMaxCurrent` through your car's own entities
 
 `sensor.cube_charger_status` normally already gets a real `A`/`B`/`C` from
 [live status polling](#-live-status-polling-chargeboxstatus) - no extra
-setup needed. What the Cube API still doesn't offer is a way to actually
-*set* the charging current (no OCPP `SetChargingProfile` equivalent). If
-your car's own Home Assistant integration exposes a real charging-current
-control, bridge it in via `car_max_current_entity`:
+setup needed for that on its own. In practice, Cube's own OCPP status can
+still report `Available` (`A`) while the car is physically plugged in (its
+status classification doesn't necessarily match a plain plugged-in check),
+so it's worth setting `car_connected_entity` anyway to catch that:
 
+- **`car_connected_entity`** – any entity reflecting whether the car is
+  plugged in. Its state is matched case-insensitively against a fixed list:
+  `on`, `true`, `1`, `yes`, `connected`, `plugged_in`/`plugged in`, and the
+  Dutch `verbonden`, `aangesloten`, `ingeplugd`, `gekoppeld` (some car
+  integrations, e.g. Volvo's, report a translated word directly as the raw
+  state). When it matches, the status is upgraded to `B` - it can turn an
+  `A` into a `B`, but never overrides an already-confirmed `C`. If your car
+  integration reports something not in that list, check the exact value via
+  **Developer Tools → States** and open an issue/PR to add it.
 - **`car_max_current_entity`** – a `number` or `input_number` entity that
-  actually limits the car's charging current. When set,
-  `number.cube_charger_max_current` initializes its min/max/step/value from
-  that entity and forwards every value evcc writes to it via
-  `number.set_value` / `input_number.set_value`, so the limit is really
-  applied. `switch.cube_charger_enable` still does the actual start/stop.
-- **`car_connected_entity`** – only relevant as a fallback: a `binary_sensor`
-  (or any entity with an `on`/`off`/`true`/`false`/`connected`/`plugged_in`
-  state) reporting whether the car is plugged in. It's only consulted if
-  *both* the live status poll and any webhook are unavailable for a cycle.
+  actually limits the car's charging current - the Cube API itself has no
+  way to *set* the charging current (no OCPP `SetChargingProfile`
+  equivalent). When set, `number.cube_charger_max_current` initializes its
+  min/max/step/value from that entity and forwards every value evcc writes
+  to it via `number.set_value` / `input_number.set_value`, so the limit is
+  really applied. `switch.cube_charger_enable` still does the actual
+  start/stop.
 
 Without `car_max_current_entity`, `number.cube_charger_max_current` is a
 local, evcc-schema-only value that isn't applied anywhere.
