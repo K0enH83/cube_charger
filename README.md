@@ -14,7 +14,7 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 - **Max current number**: `number.cube_charger_max_current` satisfies evcc's required `setMaxCurrent` entity (see [evcc integration](#-evcc-integration) below for the important caveat).
 - **idTag select**: `select.cube_charger_idtag`
 - **Automatic polling** via two shared `DataUpdateCoordinator`s (chargebox details, active transactions) — every entity that needs live transaction state reads from the same poll instead of each making its own API call.
-- **Webhook receiver** (see [Webhook support](#-webhook-support) below) — parses Cube's `Session_started`/`Session_stopped`/`Status_changed`/`Session_progress` events for real-time status, session energy and instant total-energy updates, and triggers an immediate refresh either way.
+- **Webhook receiver** (see [Webhook support](#-webhook-support) below) — parses Cube's `Session_started`/`Session_stopped`/`Status_changed`/`Session_progress` events for status, session energy and instant total-energy updates, and triggers an immediate refresh either way. Processed the moment they arrive, but Cube's own delivery isn't actually real-time — see the known limitation below.
 - Services: `start_session`, `stop_session`, `sync_history`, `rebuild_history`, `reset_chargebox`
 - Options flow for idTags (manage via UI)
 - kWh history aggregation per car (idTag)
@@ -176,8 +176,9 @@ integration registers a Home Assistant webhook receiver and parses all four:
 - **`Status_changed`** — the real OCPP `status` (e.g. `Charging`,
   `Preparing`, `SuspendedEVSE`) is mapped straight to evcc's `A`/`B`/`C`.
   Since [live status polling](#-live-status-polling-chargeboxstatus) already
-  sources the same real status without needing a webhook, this mainly makes
-  status changes near-instant instead of waiting for the next poll. The raw
+  sources the same real status without needing a webhook, this mainly saves
+  waiting for the next poll — though see the known delivery-delay limitation
+  below, Cube's own webhook dispatch isn't actually instant either. The raw
   OCPP status and `errorCode` are also exposed as attributes.
 - **`Session_progress`** — parses the OCPP `meterValue`/`sampledValue`
   payload: the default-measurand entry (`Energy.Active.Import.Register`, Wh)
@@ -228,6 +229,24 @@ Not-yet-confirmed: a flatter `Status_progress` event (with `currentEnergy` in
 kWh) has turned up in some docs but wasn't in the advertised subscribable
 event list — it's handled defensively if it ever arrives, but isn't assumed
 reliable.
+
+**Known limitation — `Session_progress` isn't actually real-time:** comparing
+a webhook payload's own `timestamp` against when it's actually received
+shows two delays, both on Cube's side and outside this integration's
+control:
+- **~2 minutes of delivery latency** — the gap between a payload's
+  `timestamp` and when the webhook call actually arrives is consistently
+  ~1m50s–2m00s, for both `Status_changed` and `Session_progress` events.
+- **A `Session_progress` sampling interval of ~4 minutes** — consecutive
+  meter readings for the same session are roughly 4 minutes apart.
+
+In practice this means session energy/current readings can lag reality by
+up to ~6 minutes, even with a webhook subscription active; `Status_changed`
+(and therefore `sensor.cube_charger_status`) is on the same ~2 minute
+delivery delay, though in practice status transitions are noticed sooner too
+via the regular polling (`poll_interval`, default 30s) that runs regardless.
+This has been reported to Cube support; this section will be updated once
+there's a response.
 
 ---
 
