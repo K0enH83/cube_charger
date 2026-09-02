@@ -42,7 +42,7 @@ class CubeChargerEnableSwitch(CoordinatorEntity[CubeTransactionsCoordinator], Sw
     def is_on(self) -> bool:
         if self._optimistic is not None:
             return self._optimistic
-        txs = self.coordinator.data or []
+        txs = (self.coordinator.data or {}).get("transactions") or []
         return any(t.get("connectorId") == self.connector_id for t in txs)
 
     @callback

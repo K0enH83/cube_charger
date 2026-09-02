@@ -9,7 +9,7 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 ## ✨ Features (current)
 
 - **Config flow** (no YAML): enter `base_url`, `bearer_token`, `verify_ssl`, `poll_interval`.
-- **evcc-compatible status sensor**: `sensor.cube_charger_status` reports `A` (ready), `B` (connected) or `C` (charging) — real `B` if you set up a webhook subscription, best-effort otherwise.
+- **evcc-compatible status sensor**: `sensor.cube_charger_status` reports `A` (ready), `B` (connected) or `C` (charging) — sourced from the real, always-polled OCPP status (`chargebox/status/{chargeBoxId}`), overridden by an even fresher webhook event when one has just arrived.
 - **Enable switch**: `switch.cube_charger_enable` starts/stops a charging session — usable as evcc's `enable`/`enabled` entity.
 - **Max current number**: `number.cube_charger_max_current` satisfies evcc's required `setMaxCurrent` entity (see [evcc integration](#-evcc-integration) below for the important caveat).
 - **idTag select**: `select.cube_charger_idtag`
@@ -20,8 +20,9 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 - kWh history aggregation per car (idTag)
 
 **Roadmap (next iterations):**
-- Live power (W) reading in Watts (only offered-current and cumulative Wh are available via webhooks so far)
-- Confirm whether `Status_progress` is a real, current event or stale docs
+- Confirm the meaning/unit/scaling of `chargebox/status`'s `vendorId`-encoded values (see below) from a real charging session, then give them a proper name/unit/device_class
+- Live power (W) reading in Watts (nothing so far has confirmed real wattage - only offered-current, cumulative Wh, and the unconfirmed vendorId values)
+- Confirm whether `Status_progress` is a real, current webhook event or stale docs
 - Document where the Cube portal surfaces the webhook HMAC secret
 
 ---
@@ -63,7 +64,7 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
    - **idtag_mapping** - e.g the mapping of the RFIDS to cards or persons (for example RFID_1=Car1; RFID_2=Persony) -> this to map transactions to a car or person, especially helpfull when using multiple charge cards
    - **Poll interval** (seconds; default 30)
    - **Verify SSL**
-   - **car_connected_entity** *(optional)* - entity ID of a car-side "plugged in" sensor (e.g. `binary_sensor.myauto_plugged_in`), used to report evcc status `B`
+   - **car_connected_entity** *(optional, rarely needed)* - entity ID of a car-side "plugged in" sensor (e.g. `binary_sensor.myauto_plugged_in`); only used as a fallback for evcc status `B` if live status polling and webhooks are both unavailable
    - **car_max_current_entity** *(optional)* - entity ID of a car-side `number`/`input_number` that actually controls charging current (e.g. `number.myauto_charging_amps`); every value evcc sets is forwarded to it
    - **webhook_secret** *(optional, recommended once found)* - verifies the `X-CubeSignature` header on incoming webhook events; see [Webhook support](#-webhook-support)
 3. Submit. The integration will connect and create entities right away, grouped under a single **Cube Charger** device that you can assign to an area/room (Settings → Devices & Services → Cube Charger → the device page has an **Area** picker).
@@ -74,11 +75,12 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 
 | Entity                         | Type   | Description                                                  |
 |-------------------------------|--------|--------------------------------------------------------------|
-| `sensor.cube_charger_status`  | Sensor | evcc-compatible status: `A` (ready), `B` (connected, needs `car_connected_entity`) or `C` (charging) |
+| `sensor.cube_charger_status`  | Sensor | evcc-compatible status: `A` (ready), `B` (connected) or `C` (charging) — real OCPP status, see above |
 | `switch.cube_charger_enable`  | Switch | Starts/stops a charging session on the configured connector  |
 | `number.cube_charger_max_current` | Number | Satisfies evcc's `setMaxCurrent`; forwarded to `car_max_current_entity` if configured, otherwise local-only |
 | `sensor.cube_charger_energy_total` | Sensor | Cumulative synced kWh across all cars/idTags on this charger |
 | `sensor.cube_charger_offered_current` | Sensor | OCPP `Current.Offered` (A) from a webhook `Session_progress` event — informational, not measured draw |
+| `sensor.cube_charger_vendor_value_1/2/3` | Sensor | **Experimental**, unconfirmed — the 3 trailing numeric groups from the polled `vendorId` field; see [Live status polling](#-live-status-polling-chargeboxstatus) |
 | `select.cube_charger_idtag`   | Select | Choose the active **idTag / car** (placeholder options now) |
 | `sensor.cube_<mappedtag>_active_sessie`  | Sensor | Intended to show the current transaction energy consumption             |
 | `sensor.cube_<mappedtag>_energie_totaal`  | Sensor | Sensor to accumulate total energy consumption on specified tag/car/person             |
@@ -104,33 +106,28 @@ chargers:
     energy: sensor.cube_charger_energy_total
 ```
 
-### Bridging status `B` and `setMaxCurrent` through your car's own entities
+### Bridging `setMaxCurrent` through your car's own entities
 
-The Cube Charging polling API itself has no live connector/plug state and no
-endpoint to set the charging current (no OCPP `SetChargingProfile`
-equivalent) — a [webhook subscription](#-webhook-support) solves the status
-side, but not max-current control. If your car's own Home Assistant
-integration exposes a "plugged in" sensor and a charging-current control,
-configure them in the integration options and the full evcc feature set
-works even without webhooks:
+`sensor.cube_charger_status` normally already gets a real `A`/`B`/`C` from
+[live status polling](#-live-status-polling-chargeboxstatus) - no extra
+setup needed. What the Cube API still doesn't offer is a way to actually
+*set* the charging current (no OCPP `SetChargingProfile` equivalent). If
+your car's own Home Assistant integration exposes a real charging-current
+control, bridge it in via `car_max_current_entity`:
 
-- **`car_connected_entity`** – a `binary_sensor` (or any entity with an
-  `on`/`off`/`true`/`false`/`connected`/`plugged_in` state) that reflects
-  whether the car is plugged in. When set, `sensor.cube_charger_status`
-  reports `B` whenever this entity is "on" but no session is active, and `C`
-  once Cube reports an active transaction on the configured connector.
 - **`car_max_current_entity`** – a `number` or `input_number` entity that
   actually limits the car's charging current. When set,
   `number.cube_charger_max_current` initializes its min/max/step/value from
   that entity and forwards every value evcc writes to it via
   `number.set_value` / `input_number.set_value`, so the limit is really
   applied. `switch.cube_charger_enable` still does the actual start/stop.
+- **`car_connected_entity`** – only relevant as a fallback: a `binary_sensor`
+  (or any entity with an `on`/`off`/`true`/`false`/`connected`/`plugged_in`
+  state) reporting whether the car is plugged in. It's only consulted if
+  *both* the live status poll and any webhook are unavailable for a cycle.
 
-Without `car_connected_entity` and no webhook subscription either,
-`sensor.cube_charger_status` can only report `A` (ready) or `C` (charging) —
-it can't distinguish "connected, not yet charging". Without
-`car_max_current_entity`, `number.cube_charger_max_current` is a local,
-evcc-schema-only value that isn't applied anywhere.
+Without `car_max_current_entity`, `number.cube_charger_max_current` is a
+local, evcc-schema-only value that isn't applied anywhere.
 
 **Why `switch.cube_charger_enable` responds instantly:** Cube's remote-start/
 -stop calls proxy an OCPP round trip to the physical charger and can take
@@ -169,10 +166,11 @@ to a URL of your choice, instead of you having to poll for them. This
 integration registers a Home Assistant webhook receiver and parses all four:
 
 - **`Status_changed`** — the real OCPP `status` (e.g. `Charging`,
-  `Preparing`, `SuspendedEVSE`) is mapped straight to evcc's `A`/`B`/`C` and
-  overrides the polling-based guess, so `sensor.cube_charger_status` can
-  finally report a genuine `B` without needing `car_connected_entity`. The
-  raw OCPP status and `errorCode` are also exposed as attributes.
+  `Preparing`, `SuspendedEVSE`) is mapped straight to evcc's `A`/`B`/`C`.
+  Since [live status polling](#-live-status-polling-chargeboxstatus) already
+  sources the same real status without needing a webhook, this mainly makes
+  status changes near-instant instead of waiting for the next poll. The raw
+  OCPP status and `errorCode` are also exposed as attributes.
 - **`Session_progress`** — parses the OCPP `meterValue`/`sampledValue`
   payload: the default-measurand entry (`Energy.Active.Import.Register`, Wh)
   feeds the per-car active-session sensor (`sensor.cube_<car>_actieve_sessie`)
@@ -215,6 +213,36 @@ Not-yet-confirmed: a flatter `Status_progress` event (with `currentEnergy` in
 kWh) has turned up in some docs but wasn't in the advertised subscribable
 event list — it's handled defensively if it ever arrives, but isn't assumed
 reliable.
+
+---
+
+## 🔬 Live status polling (`chargebox/status`)
+
+Alongside the existing `chargebox/details` and `active_transactions` polls,
+this integration also polls `GET /api/v1/CubeCharging/chargebox/status/{chargeBoxId}`
+every `poll_interval`, which — unlike anything else in the Cube API —
+returns the connector's real OCPP `status` (e.g. `Charging`, `Preparing`)
+directly, without needing a webhook subscription or `car_connected_entity`
+at all. This is what `sensor.cube_charger_status` uses by default now; a
+webhook `Status_changed` event, when one arrives, just makes the change
+show up sooner.
+
+The same response also has a `vendorId` field — a long, otherwise-opaque
+identifier string — whose trailing 3 `-`-separated numeric groups Cube
+support has said (via a support ticket, unconfirmed) carry per-phase
+current or energy, e.g. `...-054-056-056`. Since neither the unit nor the
+scaling is confirmed, these are exposed as-is:
+`sensor.cube_charger_vendor_value_1/2/3` (no unit/device_class), with the
+full raw string as a `raw_vendor_id` attribute. **If you can compare these
+values against known current/energy during a real charging session, please
+report back (or open an issue/PR)** so they can get a proper unit and be
+wired into evcc's `currentL1/L2/L3` or `power` if they turn out to be real
+measured values rather than something offered/nominal.
+
+This poll is best-effort: if it fails, it's logged at debug level and the
+rest of the shared poll (transactions, switch, energy) is unaffected —
+`sensor.cube_charger_status` then falls back to the active-transaction +
+`car_connected_entity` heuristic described above.
 
 ---
 

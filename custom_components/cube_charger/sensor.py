@@ -66,7 +66,7 @@ class CubeCarActiveEnergySensor(CoordinatorEntity[CubeTransactionsCoordinator], 
             return round(max(webhook_state["latest_meter_wh"] - start, 0.0) / 1000.0, 3)
 
         value_kwh = 0.0
-        for t in self.coordinator.data or []:
+        for t in (self.coordinator.data or {}).get("transactions") or []:
             idtag = t.get("idTag")
             if idmap.get(idtag) != self.car_name:
                 continue
@@ -82,15 +82,44 @@ class CubeCarActiveEnergySensor(CoordinatorEntity[CubeTransactionsCoordinator], 
 
 _CONNECTED_TRUE_STATES = {"on", "true", "1", "connected", "plugged_in", "yes"}
 
+
+def _find_connector_status(coordinator_data: dict | None, connector_id: int) -> dict | None:
+    for c in (coordinator_data or {}).get("connector_status") or []:
+        if c.get("connectorId") == connector_id:
+            return c
+    return None
+
+
+def _parse_vendor_groups(vendor_id: str | None) -> list[float] | None:
+    """Best-effort parse of the last 3 '-'-separated numeric groups in `vendorId`.
+
+    Cube support has indicated (unconfirmed, per a support ticket) that the
+    last 3 groups reflect per-phase current/energy, e.g. "...-054-056-056".
+    No unit or scaling is assumed here - values are exposed as-is so real
+    numbers from a live session can be compared against known current draw.
+    """
+    if not vendor_id:
+        return None
+    parts = vendor_id.split("-")
+    if len(parts) < 3:
+        return None
+    values = []
+    for p in parts[-3:]:
+        try:
+            values.append(float(p))
+        except ValueError:
+            return None
+    return values
+
+
 class CubeChargerStatusSensor(CoordinatorEntity[CubeTransactionsCoordinator], SensorEntity):
     """evcc-compatible status: 'C' while charging, 'B' while connected, else 'A'.
 
-    Prefers the real OCPP status pushed via a `Status_changed` webhook event
-    when one has been received. The Cube Charging polling API itself has no
-    live connector/plug state, so without a webhook subscription, 'B'
-    (connected, not charging) instead falls back to an external, car-side
-    entity configured via `car_connected_entity` (e.g. the car's own "plugged
-    in" binary sensor) - without that option either, it's 'A'/'C' only.
+    Status source priority: a `Status_changed` webhook event (freshest, if a
+    subscription is set up) > the real, always-polled OCPP status from
+    `chargebox/status/{chargeBoxId}` > active-transaction presence +
+    `car_connected_entity` (least accurate, used only if the status endpoint
+    call fails).
     """
 
     _attr_icon = "mdi:ev-station"
@@ -117,11 +146,18 @@ class CubeChargerStatusSensor(CoordinatorEntity[CubeTransactionsCoordinator], Se
         return self.hass.data[DOMAIN][self.entry_id]["webhook_state"].get("status")
 
     @property
+    def _polled_status_entry(self) -> dict | None:
+        return _find_connector_status(self.coordinator.data, self.connector_id)
+
+    @property
     def native_value(self) -> str:
         mapped = map_ocpp_status(self._webhook_status)
         if mapped is not None:
             return mapped
-        txs = self.coordinator.data or []
+        entry = self._polled_status_entry
+        if entry and entry.get("status"):
+            return map_ocpp_status(entry["status"])
+        txs = (self.coordinator.data or {}).get("transactions") or []
         charging = any(t.get("connectorId") == self.connector_id for t in txs)
         if charging:
             return "C"
@@ -131,8 +167,14 @@ class CubeChargerStatusSensor(CoordinatorEntity[CubeTransactionsCoordinator], Se
 
     @property
     def extra_state_attributes(self) -> dict:
-        webhook_state = self.hass.data[DOMAIN][self.entry_id]["webhook_state"]
         attrs = {}
+        entry = self._polled_status_entry
+        if entry:
+            attrs["ocpp_status"] = entry.get("status")
+            attrs["ocpp_error_code"] = entry.get("errorCode")
+            attrs["ocpp_status_timestamp"] = entry.get("statusTimestamp")
+        # A webhook event is fresher than the last poll, so it wins when present.
+        webhook_state = self.hass.data[DOMAIN][self.entry_id]["webhook_state"]
         if webhook_state.get("status") is not None:
             attrs["ocpp_status"] = webhook_state["status"]
         if webhook_state.get("error_code") is not None:
@@ -166,6 +208,47 @@ class CubeChargerOfferedCurrentSensor(CoordinatorEntity[CubeTransactionsCoordina
     @property
     def native_value(self) -> float | None:
         return self.hass.data[DOMAIN][self.entry_id]["webhook_state"].get("latest_current_a")
+
+
+class CubeChargerVendorValueSensor(CoordinatorEntity[CubeTransactionsCoordinator], SensorEntity):
+    """One of the 3 trailing numeric groups in the polled connector-status `vendorId`.
+
+    Experimental/unconfirmed: per a Cube support ticket, these 3 groups are
+    supposed to carry per-phase current or energy, but no unit or scaling has
+    been confirmed. Exposed with no unit/device_class on purpose - compare
+    the raw values against a known charging session (see `raw_vendor_id`
+    attribute for the full string) to work out what they actually mean.
+    """
+
+    _attr_icon = "mdi:flash"
+
+    def __init__(self, hass: HomeAssistant, entry_id: str, coordinator: CubeTransactionsCoordinator, connector_id: int, index: int):
+        super().__init__(coordinator)
+        self.hass = hass
+        self.entry_id = entry_id
+        self.connector_id = connector_id
+        self.index = index
+        self._attr_name = f"Cube Charger Vendor Value {index + 1}"
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_vendor_value_{index + 1}"
+
+    @property
+    def _entry(self) -> dict | None:
+        return _find_connector_status(self.coordinator.data, self.connector_id)
+
+    @property
+    def native_value(self) -> float | None:
+        entry = self._entry
+        if not entry:
+            return None
+        values = _parse_vendor_groups(entry.get("vendorId"))
+        return values[self.index] if values else None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        entry = self._entry
+        if entry and entry.get("vendorId"):
+            return {"raw_vendor_id": entry["vendorId"]}
+        return {}
 
 
 class CubeChargerTotalEnergySensor(SensorEntity, RestoreEntity):
@@ -216,7 +299,7 @@ class CubeWhoIsChargingSensor(CoordinatorEntity[CubeTransactionsCoordinator], Se
     def _active(self) -> list[dict]:
         idmap = self.hass.data[DOMAIN][self.entry_id]["idtag_map"]
         active = []
-        for t in self.coordinator.data or []:
+        for t in (self.coordinator.data or {}).get("transactions") or []:
             idtag = t.get("idTag")
             car = idmap.get(idtag)
             if car:
@@ -255,7 +338,8 @@ class CubeCarChargingBinarySensor(CoordinatorEntity[CubeTransactionsCoordinator]
     def is_on(self) -> bool:
         idmap = self.hass.data[DOMAIN][self.entry_id]["idtag_map"]
         tags = {k for k, v in idmap.items() if v == self.car_name}
-        return any(t.get("idTag") in tags for t in self.coordinator.data or [])
+        txs = (self.coordinator.data or {}).get("transactions") or []
+        return any(t.get("idTag") in tags for t in txs)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     data = hass.data[DOMAIN][entry.entry_id]
@@ -267,6 +351,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     # evcc-compatible status + overall energy total
     entities.append(CubeChargerStatusSensor(hass, entry.entry_id, tx_coord, data["connector_id"], data["car_connected_entity"]))
     entities.append(CubeChargerOfferedCurrentSensor(hass, entry.entry_id, tx_coord))
+    for i in range(3):
+        entities.append(CubeChargerVendorValueSensor(hass, entry.entry_id, tx_coord, data["connector_id"], i))
     entities.append(CubeChargerTotalEnergySensor(hass, entry.entry_id))
 
     # cumulatief + actief per auto
