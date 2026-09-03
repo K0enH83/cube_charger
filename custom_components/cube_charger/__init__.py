@@ -46,6 +46,18 @@ def map_ocpp_status(status: str | None) -> str | None:
     return _OCPP_STATUS_TO_EVCC.get(status, "A")
 
 
+def connector_matches(value, connector_id: int) -> bool:
+    """Compare a connectorId from the Cube API against the configured connector_id.
+
+    Cast both to str so a connectorId returned as a string (e.g. "1") still
+    matches an int connector_id (or vice versa) instead of silently never
+    matching.
+    """
+    if value is None:
+        return False
+    return str(value) == str(connector_id)
+
+
 def _to_float(value) -> float | None:
     try:
         return float(value)
@@ -73,7 +85,8 @@ async def _handle_webhook(hass: HomeAssistant, webhook_id: str, request: web.Req
       - Session_started: chargeBoxId, connectorId, transactionId, idTag, meterStart (Wh), timestamp
       - Status_changed: chargeBoxId, connectorId, transactionId, status (OCPP ChargePointStatus), errorCode, timestamp
       - Session_progress: chargeBoxId, connectorId, transactionId, meterValue[].sampledValue[]
-        (OCPP 1.6 MeterValues; the entry without a `measurand` is Energy.Active.Import.Register in Wh)
+        (OCPP 1.6 MeterValues; the entry without a `measurand` is Energy.Active.Import.Register in Wh;
+        `Current.Import` is real measured current in A, `Current.Offered` the offered limit in A)
       - Session_stopped: chargeBoxId, connectorId, transactionId, idTag, meterStop (Wh), reason, timestamp
     `Status_progress` (flatter shape with `currentEnergy` in kWh) has also been seen in docs but wasn't in
     the advertised subscribable event list, so it's handled defensively rather than assumed reliable.
@@ -109,7 +122,8 @@ async def _handle_webhook(hass: HomeAssistant, webhook_id: str, request: web.Req
 
     if isinstance(payload, dict):
         connector_id = data["connector_id"]
-        if payload.get("connectorId") in (None, connector_id):
+        payload_connector = payload.get("connectorId")
+        if payload_connector is None or connector_matches(payload_connector, connector_id):
             state = data["webhook_state"]
 
             if event_type == "Session_started":
@@ -120,10 +134,15 @@ async def _handle_webhook(hass: HomeAssistant, webhook_id: str, request: web.Req
                     meter_start_wh=meter_start,
                     latest_meter_wh=meter_start,
                     status="Charging",
+                    # Reset stale current readings from a previous session - the
+                    # first Session_progress of this one will repopulate them.
+                    offered_current_a=None,
+                    measured_current_a=None,
                 )
             elif event_type == "Status_changed":
                 state["status"] = payload.get("status")
                 state["error_code"] = payload.get("errorCode")
+                state["status_timestamp"] = payload.get("timestamp")
             elif event_type == "Session_progress":
                 for mv in payload.get("meterValue") or []:
                     for sv in mv.get("sampledValue") or []:
@@ -134,7 +153,9 @@ async def _handle_webhook(hass: HomeAssistant, webhook_id: str, request: web.Req
                         if measurand is None:
                             state["latest_meter_wh"] = value
                         elif measurand == "Current.Offered":
-                            state["latest_current_a"] = value
+                            state["offered_current_a"] = value
+                        elif measurand == "Current.Import":
+                            state["measured_current_a"] = value
             elif event_type == "Status_progress":
                 # Defensive/legacy-compat handling only - see docstring.
                 current_energy_kwh = _to_float(payload.get("currentEnergy"))
@@ -155,7 +176,15 @@ async def _handle_webhook(hass: HomeAssistant, webhook_id: str, request: web.Req
                     )
                 if meter_stop is not None:
                     state["latest_meter_wh"] = meter_stop
-                state.update(status="Available", transaction_id=None, idtag=None, meter_start_wh=None)
+                state.update(
+                    status="Available",
+                    transaction_id=None,
+                    idtag=None,
+                    meter_start_wh=None,
+                    # No current flows once the session has stopped.
+                    offered_current_a=None,
+                    measured_current_a=None,
+                )
 
     hass.async_create_task(data["coord"].async_request_refresh())
     hass.async_create_task(data["tx_coord"].async_request_refresh())
@@ -181,6 +210,15 @@ async def _accumulate_webhook_session(hass: HomeAssistant, entry_id: str, car: s
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     get = lambda key, default=None: entry.options.get(key, entry.data.get(key, default))
+
+    # NOT auto-generated (reverted from 0.11.0): a real subscription's `secret`
+    # was set via PUT and accepted (200, updatedAt changed) but Cube never
+    # actually signed subsequent events with it - real webhook deliveries kept
+    # arriving unsigned and were rejected once enforcement was on by default,
+    # silently breaking real-time updates for everyone. Verification is opt-in
+    # again: only enforced if the user explicitly sets webhook_secret AND has
+    # confirmed Cube actually honors it for their subscription.
+    webhook_secret = get("webhook_secret", "") or None
 
     api = CubeApi(
         get("base_url", "https://portal.cubecharging.com"),
@@ -230,15 +268,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "energy_unit_active": get("energy_unit_active", "kWh"),
         "car_connected_entity": get("car_connected_entity", "") or None,
         "car_max_current_entity": get("car_max_current_entity", "") or None,
-        "webhook_secret": get("webhook_secret", "") or None,
+        "webhook_secret": webhook_secret,
         "webhook_state": {
             "status": None,
             "error_code": None,
+            "status_timestamp": None,
             "transaction_id": None,
             "idtag": None,
             "meter_start_wh": None,
             "latest_meter_wh": None,
-            "latest_current_a": None,
+            "offered_current_a": None,
+            "measured_current_a": None,
         },
         "device_info": device_info,
         "store": store,
@@ -251,6 +291,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     webhook_url = webhook.async_generate_url(hass, webhook_id)
     chargebox_id = box.get("chargeBoxId", "YOUR_CHARGEBOX_ID")
+    secret_line = f",\n    \"secret\": {json.dumps(webhook_secret)}" if webhook_secret else ""
     async_create_notification(
         hass,
         (
@@ -265,15 +306,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "  -d '{\n"
             f'    "targetUrl": "{webhook_url}",\n'
             '    "events": ["Session_started", "Session_stopped", "Status_changed", "Session_progress"],\n'
-            f'    "chargeBoxIds": ["{chargebox_id}"]\n'
+            f'    "chargeBoxIds": ["{chargebox_id}"]{secret_line}\n'
             "  }'\n"
             "```\n\n"
             "Events are parsed for real-time status, session energy and instant "
-            "total-energy updates. Every request includes an `X-CubeSignature` "
-            "HMAC header - set `webhook_secret` in this integration's options "
-            "once you've located it in the Cube portal, so requests can be "
-            "cryptographically verified (without it, anyone with this URL could "
-            "inject fake status/energy events)."
+            "total-energy updates.\n\n"
+            "**About `webhook_secret` / signature verification:** testing has shown "
+            "Cube's subscription API accepts a `secret` in the POST/PUT body (HTTP 200, "
+            "`updatedAt` changes) but does not actually sign subsequent event deliveries "
+            "with it - real events kept arriving without a valid `X-CubeSignature` and "
+            "were rejected once verification was enforced. Because of that, "
+            "`webhook_secret` is opt-in and unenforced by default: only set it in this "
+            "integration's options if you've independently confirmed Cube signs your "
+            "events with that exact value (check the log for `invalid or missing "
+            "X-CubeSignature` after setting it - if you see that, clear the option again "
+            "immediately, since it silently blocks all real events, not just forged ones)."
         ),
         title="Cube Charger: webhook available",
         notification_id=f"{DOMAIN}_webhook_{entry.entry_id}",
