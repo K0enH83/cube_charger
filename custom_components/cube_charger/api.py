@@ -94,6 +94,15 @@ class CubeApi:
                 data = await r.json()
                 return data if isinstance(data, list) else []
 
+    async def set_max_current(self, chargebox_id: str, max_current: int) -> dict[str, Any]:
+        """Set the chargebox's total max charging current (A). Cube enforces a 10-32 range."""
+        url = f"{self.base_url}/api/v1/CubeCharging/chargebox/set-max-total-current"
+        payload = {"chargeBoxId": chargebox_id, "maxCurrent": int(max_current)}
+        async with aiohttp.ClientSession(timeout=self._session_timeout()) as s:
+            async with s.post(url, json=payload, headers=self._headers(), ssl=self.verify_ssl) as r:
+                r.raise_for_status()
+                return await r.json()
+
     async def reset_chargebox(self, chargebox_id: str, reset_type: str) -> dict[str, Any]:
         """Reset a charge box. reset_type should be 'Hard' or 'Soft'."""
         if reset_type not in ["Hard", "Soft"]:
