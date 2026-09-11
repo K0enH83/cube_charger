@@ -47,6 +47,25 @@ class CubeApi:
                 r.raise_for_status()
                 return await r.json()
 
+    async def connector_status(self, chargebox_id: str) -> list[dict[str, Any]]:
+        """Live per-connector status: {connectorPk, connectorId, status, statusTimestamp, errorCode, vendorId}.
+
+        `status` is the real OCPP ChargePointStatus (Available/Preparing/Charging/...),
+        unlike anything active_transactions or chargebox/details expose. `vendorId`'s
+        trailing 3 '-'-separated numeric groups reportedly (per Cube support, unconfirmed)
+        carry per-phase current/energy - see coordinator/sensor for how that's surfaced.
+        """
+        url = f"{self.base_url}/api/v1/CubeCharging/chargebox/status/{chargebox_id}"
+        async with aiohttp.ClientSession(timeout=self._session_timeout()) as s:
+            async with s.get(url, headers=self._headers(), ssl=self.verify_ssl) as r:
+                r.raise_for_status()
+                data = await r.json()
+                if isinstance(data, list):
+                    return data
+                if isinstance(data, dict):
+                    return [data]
+                return []
+
     async def active_transactions(self, chargebox_id: str, offset: int = 0, limit: int = 100) -> list[dict[str, Any]]:
         url = f"{self.base_url}/api/v1/CubeCharging/chargebox/transactions/active"
         params = {"chargeBoxId": chargebox_id, "offset": offset, "limit": limit}
@@ -74,6 +93,15 @@ class CubeApi:
                 r.raise_for_status()
                 data = await r.json()
                 return data if isinstance(data, list) else []
+
+    async def set_max_current(self, chargebox_id: str, max_current: int) -> dict[str, Any]:
+        """Set the chargebox's total max charging current (A). Cube enforces a 10-32 range."""
+        url = f"{self.base_url}/api/v1/CubeCharging/chargebox/set-max-total-current"
+        payload = {"chargeBoxId": chargebox_id, "maxCurrent": int(max_current)}
+        async with aiohttp.ClientSession(timeout=self._session_timeout()) as s:
+            async with s.post(url, json=payload, headers=self._headers(), ssl=self.verify_ssl) as r:
+                r.raise_for_status()
+                return await r.json()
 
     async def reset_chargebox(self, chargebox_id: str, reset_type: str) -> dict[str, Any]:
         """Reset a charge box. reset_type should be 'Hard' or 'Soft'."""

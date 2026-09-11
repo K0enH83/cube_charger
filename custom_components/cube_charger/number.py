@@ -11,18 +11,21 @@ from . import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_MAX_CURRENT = 16
-MIN_CURRENT = 6
+MIN_CURRENT = 10  # Cube's set-max-total-current enforces 10-32A.
+MAX_CURRENT_CAP = 32
 
 
 class CubeChargerMaxCurrentNumber(NumberEntity, RestoreEntity):
     """Max charging current requested by evcc.
 
-    The Cube Charging portal API itself has no endpoint to set the charging
-    current, so this entity only satisfies evcc's required `setMaxCurrent`
-    entity for the "Home Assistant" charger template. If `car_max_current_entity`
-    is configured (a `number`/`input_number` entity on the car's own HA
-    integration), every value evcc writes here is forwarded to that entity too,
-    so the car actually applies the limit. Without it, the value is local-only.
+    Forwarded to Cube's `chargebox/set-max-total-current` (confirmed working;
+    Cube enforces a 10-32A range and rejects anything outside it) so the
+    limit is genuinely applied at the charger, not just stored locally. If
+    `car_max_current_entity` is also configured (a `number`/`input_number` on
+    the car's own HA integration), the same value is forwarded there too, as
+    an additional real-world cap. Both calls run in the background - like
+    `switch.cube_charger_enable`, Cube's command can take a while to confirm,
+    and evcc's `number.set_value` call shouldn't have to wait for that.
     """
 
     _attr_icon = "mdi:current-ac"
@@ -63,6 +66,25 @@ class CubeChargerMaxCurrentNumber(NumberEntity, RestoreEntity):
     async def async_set_native_value(self, value: float) -> None:
         self._attr_native_value = value
         self.async_write_ha_state()
+        self.hass.async_create_task(self._async_apply(value))
+
+    async def _async_apply(self, value: float) -> None:
+        data = self.hass.data[DOMAIN][self.entry_id]
+        api = data["api"]
+        coord = data["coord"]
+        cids = list((coord.data or {}).keys())
+        chargebox_id = cids[0] if cids else None
+
+        if chargebox_id and MIN_CURRENT <= value <= MAX_CURRENT_CAP:
+            try:
+                await api.set_max_current(chargebox_id, int(value))
+            except Exception:
+                _LOGGER.exception("cube_charger set_max_current failed")
+        elif chargebox_id:
+            _LOGGER.warning(
+                "cube_charger set_max_current: %.0fA is outside Cube's %d-%dA range, not sent",
+                value, MIN_CURRENT, MAX_CURRENT_CAP,
+            )
 
         if not self.car_max_current_entity:
             return
@@ -73,12 +95,15 @@ class CubeChargerMaxCurrentNumber(NumberEntity, RestoreEntity):
                 self.car_max_current_entity,
             )
             return
-        await self.hass.services.async_call(
-            domain,
-            "set_value",
-            {"entity_id": self.car_max_current_entity, "value": value},
-            blocking=True,
-        )
+        try:
+            await self.hass.services.async_call(
+                domain,
+                "set_value",
+                {"entity_id": self.car_max_current_entity, "value": value},
+                blocking=True,
+            )
+        except Exception:
+            _LOGGER.exception("cube_charger: forwarding max current to %s failed", self.car_max_current_entity)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
@@ -89,6 +114,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     if cids:
         box = coord.data[cids[0]]
         max_current = box.get("maximumConnectorCurrent") or box.get("maximumSystemCurrent") or DEFAULT_MAX_CURRENT
-    entity = CubeChargerMaxCurrentNumber(hass, entry.entry_id, int(max_current), data["car_max_current_entity"])
+    max_current = max(MIN_CURRENT, min(int(max_current), MAX_CURRENT_CAP))
+    entity = CubeChargerMaxCurrentNumber(hass, entry.entry_id, max_current, data["car_max_current_entity"])
     entity._attr_device_info = data["device_info"]
     async_add_entities([entity])
