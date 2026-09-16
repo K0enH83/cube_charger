@@ -42,19 +42,18 @@ class CubeCarTotalEnergySensor(SensorEntity, RestoreEntity):
 class CubeCarActiveEnergySensor(CoordinatorEntity[CubeTransactionsCoordinator], SensorEntity):
     """Current-session energy (kWh) for one car, from the shared active-transactions poll.
 
-    Cube reports ``currentEnergy`` in Wh. ``unit_active`` remains configurable
-    for compatibility with older API variants.
+    Cube reports ``currentEnergy`` in Wh, which is normalized to kWh before
+    exposing it to Home Assistant.
     """
 
     _attr_device_class = "energy"
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
 
-    def __init__(self, hass: HomeAssistant, entry_id: str, coordinator: CubeTransactionsCoordinator, car_name: str, unit_active: str):
+    def __init__(self, hass: HomeAssistant, entry_id: str, coordinator: CubeTransactionsCoordinator, car_name: str):
         super().__init__(coordinator)
         self.hass = hass
         self.entry_id = entry_id
         self.car_name = car_name
-        self.unit_active = unit_active
         self._attr_name = f"Cube {car_name} actieve sessie"
         self._attr_unique_id = f"{DOMAIN}_{entry_id}_active_{car_name}"
 
@@ -77,10 +76,7 @@ class CubeCarActiveEnergySensor(CoordinatorEntity[CubeTransactionsCoordinator], 
                 continue
             cur = t.get("currentEnergy")
             try:
-                v = float(cur)
-                if self.unit_active == "Wh":
-                    v = v / 1000.0
-                value_kwh += v
+                value_kwh += float(cur) / 1000.0
             except (TypeError, ValueError):
                 continue
         return round(value_kwh, 3)
@@ -361,15 +357,12 @@ class CubeWhoIsChargingSensor(CoordinatorEntity[CubeTransactionsCoordinator], Se
 
     def _active(self) -> list[dict]:
         idmap = self.hass.data[DOMAIN][self.entry_id]["idtag_map"]
-        unit_active = self.hass.data[DOMAIN][self.entry_id].get("energy_unit_active", "Wh")
         active = []
         for t in (self.coordinator.data or {}).get("transactions") or []:
             idtag = t.get("idTag")
             car = idmap.get(idtag)
             if car:
-                current_energy = float(t.get("currentEnergy") or 0.0)
-                if unit_active == "Wh":
-                    current_energy /= 1000.0
+                current_energy = float(t.get("currentEnergy") or 0.0) / 1000.0
                 active.append({
                     "car": car,
                     "idTag": idtag,
@@ -426,7 +419,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     # cumulatief + actief per auto
     for car in sorted(set(idmap.values())):
         entities.append(CubeCarTotalEnergySensor(hass, entry.entry_id, car))
-        entities.append(CubeCarActiveEnergySensor(hass, entry.entry_id, tx_coord, car, data["energy_unit_active"]))
+        entities.append(CubeCarActiveEnergySensor(hass, entry.entry_id, tx_coord, car))
         entities.append(CubeCarChargingBinarySensor(hass, entry.entry_id, tx_coord, car))
 
     # wie-laadt-nu sensor (1 tekstsensor)

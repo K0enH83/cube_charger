@@ -265,7 +265,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "tx_coord": tx_coord,
         "connector_id": int(get("connector_id", 1)),
         "idtag_map": idtag_map,
-        "energy_unit_active": get("energy_unit_active", "Wh"),
         "car_connected_entity": get("car_connected_entity", "") or None,
         "car_max_current_entity": get("car_max_current_entity", "") or None,
         "webhook_secret": webhook_secret,
