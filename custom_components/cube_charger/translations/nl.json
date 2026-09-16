@@ -10,7 +10,7 @@
           "bearer_token": "Bearer token",
           "connector_id": "Connector-ID",
           "idtag_mapping": "idTag→auto mapping (kommagescheiden)",
-          "energy_unit_active": "Eenheid actieve sessie-energie",
+          "energy_unit_active": "Eenheid actieve sessie-energie (Cube geeft Wh door)",
           "poll_interval": "Poll-interval (seconden)",
           "request_timeout": "Timeout voor verzoeken (seconden)",
           "verify_ssl": "SSL controleren",
@@ -37,7 +37,7 @@
         "data": {
           "connector_id": "Connector-ID",
           "idtag_mapping": "idTag→auto mapping (kommagescheiden)",
-          "energy_unit_active": "Eenheid actieve sessie-energie",
+          "energy_unit_active": "Eenheid actieve sessie-energie (Cube geeft Wh door)",
           "poll_interval": "Poll-interval (seconden)",
           "request_timeout": "Timeout voor verzoeken (seconden)",
           "verify_ssl": "SSL controleren",

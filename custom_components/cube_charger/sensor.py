@@ -40,7 +40,11 @@ class CubeCarTotalEnergySensor(SensorEntity, RestoreEntity):
         self.async_write_ha_state()
 
 class CubeCarActiveEnergySensor(CoordinatorEntity[CubeTransactionsCoordinator], SensorEntity):
-    """Current-session energy (kWh) for one car, from the shared active-transactions poll."""
+    """Current-session energy (kWh) for one car, from the shared active-transactions poll.
+
+    Cube reports ``currentEnergy`` in Wh. ``unit_active`` remains configurable
+    for compatibility with older API variants.
+    """
 
     _attr_device_class = "energy"
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
@@ -357,17 +361,21 @@ class CubeWhoIsChargingSensor(CoordinatorEntity[CubeTransactionsCoordinator], Se
 
     def _active(self) -> list[dict]:
         idmap = self.hass.data[DOMAIN][self.entry_id]["idtag_map"]
+        unit_active = self.hass.data[DOMAIN][self.entry_id].get("energy_unit_active", "Wh")
         active = []
         for t in (self.coordinator.data or {}).get("transactions") or []:
             idtag = t.get("idTag")
             car = idmap.get(idtag)
             if car:
+                current_energy = float(t.get("currentEnergy") or 0.0)
+                if unit_active == "Wh":
+                    current_energy /= 1000.0
                 active.append({
                     "car": car,
                     "idTag": idtag,
                     "transactionPk": t.get("transactionPk"),
                     "connectorId": t.get("connectorId"),
-                    "currentEnergy_kWh": float(t.get("currentEnergy") or 0.0)
+                    "currentEnergy_kWh": round(current_energy, 3)
                 })
         return active
 

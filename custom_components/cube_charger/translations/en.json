@@ -10,7 +10,7 @@
           "bearer_token": "Bearer token",
           "connector_id": "Connector ID",
           "idtag_mapping": "idTag→car mapping (comma-separated)",
-          "energy_unit_active": "Active-session energy unit",
+          "energy_unit_active": "Active-session energy unit (Cube reports Wh)",
           "poll_interval": "Poll interval (seconds)",
           "request_timeout": "Request timeout (seconds)",
           "verify_ssl": "Verify SSL",
@@ -37,7 +37,7 @@
         "data": {
           "connector_id": "Connector ID",
           "idtag_mapping": "idTag→car mapping (comma-separated)",
-          "energy_unit_active": "Active-session energy unit",
+          "energy_unit_active": "Active-session energy unit (Cube reports Wh)",
           "poll_interval": "Poll interval (seconds)",
           "request_timeout": "Request timeout (seconds)",
           "verify_ssl": "Verify SSL",

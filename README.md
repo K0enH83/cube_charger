@@ -83,7 +83,7 @@ A community integration for **Cube Charging** that adds your charger to Home Ass
 | `sensor.cube_charger_offered_current` | Sensor | OCPP `Current.Offered` (A) from a webhook `Session_progress` event — informational, the offered limit, not measured draw |
 | `sensor.cube_charger_vendor_value_1/2/3` | Sensor | **Experimental**, unconfirmed — the 3 trailing numeric groups from the polled `vendorId` field; see [Live status polling](#-live-status-polling-chargeboxstatus) |
 | `select.cube_charger_idtag`   | Select | Choose the active **idTag / car** (placeholder options now) |
-| `sensor.cube_<mappedtag>_active_sessie`  | Sensor | Intended to show the current transaction energy consumption             |
+| `sensor.cube_<mappedtag>_active_sessie`  | Sensor | Current transaction energy consumption in kWh (`currentEnergy` from Cube is converted from Wh) |
 | `sensor.cube_<mappedtag>_energie_totaal`  | Sensor | Sensor to accumulate total energy consumption on specified tag/car/person             |
 | `sensor.cube_<mappedtag>_laadt_nu`  | Sensor | Sensor to indicate if tag is currently charging              |
 
